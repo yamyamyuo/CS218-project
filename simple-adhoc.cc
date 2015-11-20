@@ -165,7 +165,7 @@ NS_LOG_COMPONENT_DEFINE ("WifiSimpleAdhoc");
 void ReceivePacket (Ptr<Socket> socket)
 {
   Ptr<Packet> packet;
-  uint32_t num_packet = 0;//##1
+  uint32_t num_packet = 0;
   while ( packet = socket->Recv ())
     {
       uint8_t *outBuf = new uint8_t [packet -> GetSize()];
@@ -180,7 +180,7 @@ void ReceivePacket (Ptr<Socket> socket)
       NS_LOG_UNCOND (output);
 
       num_packet++;
-      NS_LOG_UNCOND ("Received "<<num_packet<<" packet!");//##
+      NS_LOG_UNCOND ("Received "<<num_packet<<" packet!");
     }
 }
 
@@ -190,8 +190,8 @@ static void GenerateTraffic (Ptr<Socket> socket, uint32_t pktSize,
   if (pktCount > 0)
     {
       Ptr<Packet> helloMsg = Create<Packet> (reinterpret_cast<const uint8_t*> ("hello world!"), 12);
-      //socket->Send (Create<Packet> (pktSize));##2
-      socket->Send (helloMsg);//##3
+      //socket->Send (Create<Packet> (pktSize));
+      socket->Send (helloMsg);
       Simulator::Schedule (pktInterval, &GenerateTraffic, 
                            socket, pktSize,pktCount-1, pktInterval);
     }
@@ -297,7 +297,7 @@ int main (int argc, char *argv[])
 
   TypeId tid = TypeId::LookupByName ("ns3::UdpSocketFactory");
 
-//receiver ##
+//receiver 
   //https://groups.google.com/forum/#!topic/ns-3-users/nSQB8-y1n1w
   //implement a class of receiver, not using socket only
   std::vector<Ptr<Socket> > receiveSink (users);
@@ -310,7 +310,7 @@ int main (int argc, char *argv[])
   for (uint32_t n = 0; n < users; n++) {
         receiveSink[n]->Bind (local);
         receiveSink[n]->SetRecvCallback (MakeCallback (&ReceivePacket));      
-  //SetRecvCallback (Callback<void, Ptr<Socket>>)##4
+  //SetRecvCallback (Callback<void, Ptr<Socket>>)
   }       
 
   Ptr<Socket> source = Socket::CreateSocket (c.Get (10), tid);
