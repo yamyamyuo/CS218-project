@@ -69,6 +69,13 @@
 
 using namespace ns3;
 
+class TrustValue
+{
+public:
+  int encounters;
+  int time;
+};
+
 class MyReceiver
 {
 
@@ -82,6 +89,7 @@ public:
   void Receive (Callback<void, Ptr<Socket> > ReceivePacket);
   void ReceivePacket (Ptr<Socket> socket);
 private:
+  TrustValue trustValues[100];
   std::string m_data;
   Ptr<Socket> mySocket;
   
@@ -140,8 +148,9 @@ MyReceiver::ReceivePacket (Ptr<Socket> socket)
       }
 
       std::string output = convert.str();
+      uint32_t nodeID = socket -> GetNode()->GetId();
       this -> SetData (output);
-      NS_LOG_UNCOND (this -> GetData() );
+      NS_LOG_UNCOND (nodeID );
 
       num_packet++;
       NS_LOG_UNCOND ("Received "<<num_packet<<" packets!");
@@ -176,7 +185,7 @@ int main (int argc, char *argv[])
   uint32_t numPackets = 5;
   double interval = 1.0; // seconds
   bool verbose = false;
-  uint32_t users = 25;
+  uint32_t users = 100;
 
   CommandLine cmd;
 
