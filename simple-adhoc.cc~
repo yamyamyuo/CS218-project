@@ -144,7 +144,7 @@ MyReceiver::ReceivePacket (Ptr<Socket> socket)
       NS_LOG_UNCOND (this -> GetData() );
 
       num_packet++;
-      NS_LOG_UNCOND ("Received "<<num_packet<<" packets!");
+      NS_LOG_UNCOND ("Received "<<num_packet<<" packet!");
     }
 }
 
@@ -274,7 +274,7 @@ int main (int argc, char *argv[])
 
   for (uint32_t n = 0; n < users; n++) {
       myReceiverSink.at(n) -> Bind (local);
-      myReceiverSink.at(n) -> Receive (MakeCallback (&MyReceiver::ReceivePacket, myReceiverSink.at(n)));
+      myReceiverSink.at(n) -> Receive (MakeCallback (&MyReceiver::ReceivePacket, &myReceiverSink.at(n)));
   }       
 
   Ptr<Socket> source = Socket::CreateSocket (c.Get (10), tid);
