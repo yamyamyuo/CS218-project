@@ -69,8 +69,53 @@
 
 using namespace ns3;
 
-class AnonHeader : public Header 
+class MyReceiver
+{
 
+public: 
+  MyReceiver (Ptr<Node> node, TypeId tid);
+  Ptr<Socket> GetSocket ();
+  void SetData (std::string m_value);
+  //virtual ~MyReceiver ();
+  void Bind (InetSocketAddress local);
+  void Receive (Callback<void, Ptr<Socket> > ReceivePacket);
+private:
+  std::string m_data;
+  Ptr<Socket> mySocket;
+  
+};
+
+MyReceiver::MyReceiver (Ptr<Node> node, TypeId tid)
+{
+  this -> mySocket = Socket::CreateSocket (node, tid);
+  this -> m_data = "";
+}
+
+void
+MyReceiver::Receive (Callback<void, Ptr<Socket> > ReceivePacket)
+{
+    mySocket -> SetRecvCallback (ReceivePacket);
+}
+
+void
+MyReceiver::Bind (InetSocketAddress local)
+{
+    mySocket -> Bind (local);
+}
+
+Ptr<Socket>
+MyReceiver::GetSocket ()
+{
+    return MyReceiver::mySocket;
+}
+
+void
+MyReceiver::SetData (std::string m_value)
+{
+  this -> m_data = m_value;
+}
+
+class AnonHeader : public Header 
 {
 public:
 
@@ -159,10 +204,10 @@ AnonHeader::GetData (void) const
 }
 
 
-
 NS_LOG_COMPONENT_DEFINE ("WifiSimpleAdhoc");
 
-void ReceivePacket (Ptr<Socket> socket)
+void 
+ReceivePacket (Ptr<Socket> socket)
 {
   Ptr<Packet> packet;
   uint32_t num_packet = 0;
@@ -184,6 +229,8 @@ void ReceivePacket (Ptr<Socket> socket)
     }
 }
 
+
+
 static void GenerateTraffic (Ptr<Socket> socket, uint32_t pktSize, 
                              uint32_t pktCount, Time pktInterval )
 {
@@ -191,7 +238,7 @@ static void GenerateTraffic (Ptr<Socket> socket, uint32_t pktSize,
     {
       Ptr<Packet> helloMsg = Create<Packet> (reinterpret_cast<const uint8_t*> ("hello world!"), 12);
       //socket->Send (Create<Packet> (pktSize));
-      socket->Send (helloMsg);
+      socket->Send (helloMsg);//
       Simulator::Schedule (pktInterval, &GenerateTraffic, 
                            socket, pktSize,pktCount-1, pktInterval);
     }
@@ -297,20 +344,18 @@ int main (int argc, char *argv[])
 
   TypeId tid = TypeId::LookupByName ("ns3::UdpSocketFactory");
 
-//receiver 
-  //https://groups.google.com/forum/#!topic/ns-3-users/nSQB8-y1n1w
-  //implement a class of receiver, not using socket only
-  std::vector<Ptr<Socket> > receiveSink (users);
+  //receiver 
+  std::vector<MyReceiver* > myReceiverSink (users);
   for (uint32_t n = 0; n < users; n++) {
-        receiveSink[n] = Socket::CreateSocket (c.Get(n), tid);
+      MyReceiver *receiver = new MyReceiver (c.Get(n), tid);
+      myReceiverSink.at(n) = receiver;
   }
 
   InetSocketAddress local = InetSocketAddress (Ipv4Address::GetAny (), 80);
 
   for (uint32_t n = 0; n < users; n++) {
-        receiveSink[n]->Bind (local);
-        receiveSink[n]->SetRecvCallback (MakeCallback (&ReceivePacket));      
-  //SetRecvCallback (Callback<void, Ptr<Socket>>)
+      myReceiverSink.at(n) -> Bind (local);
+      myReceiverSink.at(n) -> Receive (MakeCallback (&ReceivePacket));
   }       
 
   Ptr<Socket> source = Socket::CreateSocket (c.Get (10), tid);
