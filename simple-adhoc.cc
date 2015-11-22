@@ -214,6 +214,8 @@ MyReceiver::ReceivePacket (Ptr<Socket> socket)
   while ( packet = socket->Recv ())
     {
       uint8_t *outBuf = new uint8_t [packet -> GetSize()];
+
+      packet->Print(std::cout);
       packet->CopyData (outBuf, packet -> GetSize());
       
       std::ostringstream convert;
@@ -221,11 +223,10 @@ MyReceiver::ReceivePacket (Ptr<Socket> socket)
           convert << outBuf[a];
       }
 
-
       std::string output = convert.str();
-      uint32_t nodeID = socket -> GetNode()->GetId();
+      //uint32_t nodeID = socket -> GetNode()->GetId();
       this -> SetData (output);
-      NS_LOG_UNCOND (nodeID );
+      NS_LOG_UNCOND (output );
 
       num_packet++;
       NS_LOG_UNCOND ("Received "<<num_packet<<" packets!");
@@ -240,10 +241,10 @@ static void GenerateTraffic (Ptr<Socket> socket, uint32_t pktSize,
   if (pktCount > 0)
     {
       MyHeader helloHeader;
-      helloHeader.SetData(socket -> GetNode()->GetId());
+      helloHeader.SetData(2);
       Ptr<Packet> helloMsg = Create<Packet> (reinterpret_cast<const uint8_t*> ("hello world!"), 12);
       helloMsg -> AddHeader(helloHeader);
-      socket->Send (helloMsg);//
+      socket->Send (helloMsg);
       Simulator::Schedule (pktInterval, &GenerateTraffic, 
                            socket, pktSize,pktCount-1, pktInterval);
     }
