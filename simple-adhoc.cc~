@@ -69,13 +69,6 @@
 
 using namespace ns3;
 
-class TrustValue
-{
-public:
-  int encounters;
-  int time;
-};
-
 class MyHeader : public Header 
 {
 public:
@@ -163,7 +156,6 @@ public:
   void Receive (Callback<void, Ptr<Socket> > ReceivePacket);
   void ReceivePacket (Ptr<Socket> socket);
 private:
-  TrustValue trustValues[100];
   std::string m_data;
   Ptr<Socket> mySocket;
   
@@ -367,19 +359,16 @@ int main (int argc, char *argv[])
       myReceiverSink.at(n) -> Receive (MakeCallback (&MyReceiver::ReceivePacket, myReceiverSink.at(n)));
   }       
 
-  Ptr<Socket> source = Socket::CreateSocket (c.Get (10), tid);
   InetSocketAddress remote = InetSocketAddress (Ipv4Address ("255.255.255.255"), 80);
-  source->SetAllowBroadcast (true);
-  source->Connect (remote);
+  for (uint32_t n = 0; n < users; n++) {
+    Ptr<Socket> source = Socket::CreateSocket (c.Get (n), tid);
+    source->SetAllowBroadcast (true);
+    source->Connect (remote);
 
-  // Tracing
-  //wifiPhy.EnablePcap ("simple-adhoc", devices);
-
-  // Output what we are doing
-  NS_LOG_UNCOND ("Testing " << numPackets  << " packets sent with receiver rss " << rss );
-  Simulator::ScheduleWithContext (source->GetNode ()->GetId (),
-                                  Seconds (1.0), &GenerateTraffic, 
-                                  source, packetSize, numPackets, interPacketInterval);
+    Simulator::ScheduleWithContext (source->GetNode ()->GetId (),
+                                    Seconds (1.0), &GenerateTraffic, 
+                                    source, packetSize, numPackets, interPacketInterval);
+  }
 
   Simulator::Stop (Seconds (10.0));
   AnimationInterface anim ("simple-adhoc.xml");

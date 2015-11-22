@@ -359,19 +359,18 @@ int main (int argc, char *argv[])
       myReceiverSink.at(n) -> Receive (MakeCallback (&MyReceiver::ReceivePacket, myReceiverSink.at(n)));
   }       
 
-  Ptr<Socket> source = Socket::CreateSocket (c.Get (10), tid);
-  InetSocketAddress remote = InetSocketAddress (Ipv4Address ("255.255.255.255"), 80);
-  source->SetAllowBroadcast (true);
-  source->Connect (remote);
-
-  // Tracing
-  //wifiPhy.EnablePcap ("simple-adhoc", devices);
-
-  // Output what we are doing
-  NS_LOG_UNCOND ("Testing " << numPackets  << " packets sent with receiver rss " << rss );
-  Simulator::ScheduleWithContext (source->GetNode ()->GetId (),
+  //sources
+  std::vector<Ptr<Socket> > sources (users);
+  for (uint32_t n = 0; n < users; n++) {
+    Ptr<Socket> source = Socket::CreateSocket (c.Get (n), tid);
+    InetSocketAddress remote = InetSocketAddress (Ipv4Address ("255.255.255.255"), 80);
+    source->SetAllowBroadcast (true);
+    source->Connect (remote);
+    sources.at(n) = source;
+  }
+  Simulator::ScheduleWithContext (sources.at(10)->GetNode ()->GetId (),
                                   Seconds (1.0), &GenerateTraffic, 
-                                  source, packetSize, numPackets, interPacketInterval);
+                                  sources.at(10), packetSize, numPackets, interPacketInterval);
 
   Simulator::Stop (Seconds (10.0));
   AnimationInterface anim ("simple-adhoc.xml");
