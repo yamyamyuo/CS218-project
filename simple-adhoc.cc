@@ -69,13 +69,6 @@
 
 using namespace ns3;
 
-class TrustValue
-{
-public:
-  int encounters;
-  int time;
-};
-
 class MyHeader : public Header 
 {
 public:
@@ -163,7 +156,6 @@ public:
   void Receive (Callback<void, Ptr<Socket> > ReceivePacket);
   void ReceivePacket (Ptr<Socket> socket);
 private:
-  TrustValue trustValues[100];
   std::string m_data;
   Ptr<Socket> mySocket;
   
