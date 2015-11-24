@@ -48,7 +48,7 @@ public:
   EncounterListItem* tail;
 };
 
-/*
+
 class ScoreTable
 {
 public:
@@ -61,12 +61,13 @@ public:
   void calculateMaxScore(int &max_id, int &max_score);
   //void updateTable(EncounterTuple item);
 
+/*
 private:
   double factor;
   double lambda;
   int validPeriod;
-};
 */
+};
 
 
 } //namespace ns3
