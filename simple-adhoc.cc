@@ -155,6 +155,7 @@ public:
   void Bind (InetSocketAddress local);
   void Receive (Callback<void, Ptr<Socket> > ReceivePacket);
   void ReceivePacket (Ptr<Socket> socket);
+  void SayHello (uint32_t pktCount, Time pktInterval);
 private:
   std::string m_data;
   Ptr<Socket> mySocket;
@@ -164,6 +165,9 @@ private:
 MyReceiver::MyReceiver (Ptr<Node> node, TypeId tid)
 {
   this -> mySocket = Socket::CreateSocket (node, tid);
+  InetSocketAddress remote = InetSocketAddress (Ipv4Address ("255.255.255.255"), 80);
+  this -> mySocket ->SetAllowBroadcast (true);
+  this -> mySocket -> Connect (remote);
   this -> m_data = "";
 }
 
@@ -226,26 +230,18 @@ MyReceiver::ReceivePacket (Ptr<Socket> socket)
       num_packet++;
       NS_LOG_UNCOND ("Received "<<num_packet<<" packets!");
     }
-}
+} 
 
-
-
-static void GenerateTraffic (Ptr<Socket> socket,  uint32_t pktSize, 
-                             uint32_t pktCount, Time pktInterval )
+void MyReceiver::SayHello (uint32_t pktCount, Time pktInterval)
 {
   if (pktCount > 0)
     {
       MyHeader helloHeader;
-      helloHeader.SetData(socket->GetNode () -> GetId ());
+      helloHeader.SetData(this -> mySocket ->GetNode () -> GetId ());
       Ptr<Packet> helloMsg = Create<Packet> (reinterpret_cast<const uint8_t*> ("hello world!"), 12);
       helloMsg -> AddHeader(helloHeader);
-      socket->Send (helloMsg);
-      Simulator::Schedule (pktInterval, &GenerateTraffic, 
-                           socket, pktSize,pktCount-1, pktInterval);
-    }
-  else
-    {
-      socket->Close ();
+      this -> mySocket -> Send (helloMsg);
+      Simulator::Schedule (pktInterval, &MyReceiver::SayHello, this, 10, pktInterval);
     }
 }
 
@@ -255,10 +251,10 @@ int main (int argc, char *argv[])
   std::string phyMode ("DsssRate1Mbps");
   double rss = -80;  // -dBm
   uint32_t packetSize = 1000; // bytes
-  uint32_t numPackets = 5;
+  uint32_t numPackets = 10;
   double interval = 1.0; // seconds
   bool verbose = false;
-  uint32_t users = 100;
+  uint32_t users = 50;
 
   CommandLine cmd;
 
@@ -345,38 +341,21 @@ int main (int argc, char *argv[])
 
   TypeId tid = TypeId::LookupByName ("ns3::UdpSocketFactory");
 
-  //receiver 
+  //routing 
   std::vector<MyReceiver* > myReceiverSink (users);
   for (uint32_t n = 0; n < users; n++) {
       MyReceiver *receiver = new MyReceiver (c.Get(n), tid);
+      InetSocketAddress local = InetSocketAddress (Ipv4Address::GetAny (), 80);
+      receiver -> Bind(local);
+      receiver -> Receive (MakeCallback (&MyReceiver::ReceivePacket, receiver));
+      receiver -> SayHello(numPackets, interPacketInterval);
       myReceiverSink.at(n) = receiver;
   }
-
-  InetSocketAddress local = InetSocketAddress (Ipv4Address::GetAny (), 80);
-
-  for (uint32_t n = 0; n < users; n++) {
-      myReceiverSink.at(n) -> Bind (local);
-      myReceiverSink.at(n) -> Receive (MakeCallback (&MyReceiver::ReceivePacket, myReceiverSink.at(n)));
-  }       
-
-  //sources
-  std::vector<Ptr<Socket> > sources (users);
-  for (uint32_t n = 0; n < users; n++) {
-    Ptr<Socket> source = Socket::CreateSocket (c.Get (n), tid);
-    InetSocketAddress remote = InetSocketAddress (Ipv4Address ("255.255.255.255"), 80);
-    source->SetAllowBroadcast (true);
-    source->Connect (remote);
-    sources.at(n) = source;
-  }
-  Simulator::ScheduleWithContext (sources.at(10)->GetNode ()->GetId (),
-                                  Seconds (1.0), &GenerateTraffic, 
-                                  sources.at(10), packetSize, numPackets, interPacketInterval);
-
-  Simulator::Stop (Seconds (10.0));
+  Simulator::Stop (Seconds (20.0));
   AnimationInterface anim ("simple-adhoc.xml");
   //anim.SetConstantPosition (csmaNodes.Get(1), 6, 10);
   //anim.SetConstantPosition (csmaNodes.Get(2), 9, 10);
-  //anim.SetConstantPosition (csmaNodes.Get(3), 12, 10);
+  //anim.SetConstantPosition (csmaNod/es.Get(3), 12, 10);
   Simulator::Run ();
   Simulator::Destroy ();
 
