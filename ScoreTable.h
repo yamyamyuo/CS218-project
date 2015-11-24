@@ -18,6 +18,8 @@ public:
   EncounterTuple(uint32_t id, Time time);
   uint32_t node_id;
   Time timestamp;
+  Time GetTime();
+  uint32_t GetID();
 };
 
 class EncounterListItem
@@ -34,11 +36,11 @@ class EncounterList
 {
 public:
   EncounterList();
-  EncounterList(int nodeSize, double factor, double lambda, Time validPeriod) 
+  EncounterList(int nodeSize, double factor, double lambda, Time validPeriod);
   void InsertItem(EncounterListItem *current);
   void DeleteItem(Time start, Time end);
   void Next();
-  void calculateMaxScore(int nodeSize, int curr_time, int &max_id, int &max_score) 
+  void calculateMaxScore(int nodeSize, Time curr_time, int &max_id, int &max_score);
 
   int nodeSize;
   double factor;

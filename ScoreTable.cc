@@ -25,6 +25,17 @@ EncounterTuple::EncounterTuple(uint32_t id, Time time)
   timestamp = time;
 }
 
+Time
+EncounterTuple::GetTime(){
+  return this -> timestamp;
+}
+
+uint32_t
+EncounterTuple::GetID()
+{
+  return this -> node_id;
+}
+
 EncounterListItem::EncounterListItem(EncounterTuple *tuple)
 {
   curr_data.node_id = tuple -> node_id;
@@ -63,7 +74,13 @@ EncounterList::InsertItem(EncounterListItem *current)
 void
 EncounterList::DeleteItem(Time start, Time end)
 {
-  
+  Time tx = head -> curr_data.GetTime();
+  while (tx < end)
+  {
+    head = head -> next;
+    head -> prev = NULL;
+    tx = head -> curr_data.GetTime();
+  }
 }
 
 /*  calculateMaxScore is to go through the whole EncounterList and find out the most popular node so far
@@ -74,14 +91,14 @@ EncounterList::DeleteItem(Time start, Time end)
 
 */
 void
-EncounterList::calculateMaxScore(int nodeSize, int curr_time, int &max_id, int &max_score) 
+EncounterList::calculateMaxScore(int nodeSize, Time curr_time, int &max_id, int &max_score) 
 {
   std::vector<int> trustScore(nodeSize);
   EncounterListItem *p = head;
   while (p -> next != NULL )
   {
     EncounterTuple curr_tuple = p -> curr_data; 
-    trustScore[curr_tuple.node_id] += pow (factor, lambda * (curr_time - curr_tuple.timestamp));
+    trustScore[curr_tuple.node_id] += pow (factor, lambda * (curr_time.GetSeconds() - curr_tuple.timestamp.GetSeconds()));
   }
   max_id = 0;
   max_score = 0;
@@ -129,7 +146,3 @@ ScoreTable::updateTable(EncounterTable item) {
 
 }// namespace ns3
 
-int main()
-{
-  return 0;
-}
