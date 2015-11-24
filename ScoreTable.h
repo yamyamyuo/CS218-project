@@ -4,31 +4,59 @@
 #include <stdint.h>
 #include "vector"
 #include <math.h>
+#include "ns3/nstime.h"
+#include <iostream>
+#include <map>
+#include <list>	
+
 namespace ns3 {
 
-class trustItem
+class EncounterTuple
 {
 public:
-  int id;
-  int time;
-  void erase (int start, int end);
+  EncounterTuple();
+  EncounterTuple(uint32_t id, Time time);
+  uint32_t node_id;
+  Time timestamp;
 };
+
+class EncounterListItem
+{
+public:
+  EncounterListItem(EncounterTuple *tuple);
+
+  EncounterTuple curr_data;
+  EncounterListItem* prev;
+  EncounterListItem* next;
+};
+
+class EncounterList
+{
+public:
+  EncounterList();
+  void InsertItem(EncounterListItem *current);
+  void DeleteItem(Time start, Time end);
+  void Next();
+
+  EncounterListItem* head;
+  EncounterListItem* tail;
+};
+
 
 class ScoreTable
 {
 public:
-  std::vector<trustItem> trustTable;
+  //std::vector<EncounterTable> trustTable;
   int currTime;
   int nodeSize;
   ScoreTable ();
   void calculateMaxScore(int &max_id, int &max_score);
-  void updateTable(trustItem item);
+  //void updateTable(EncounterTuple item);
 
 private:
-  static double factor;
-  static double lambda;
-  static int validPeriod;
- 
+  double factor;
+  double lambda;
+  int validPeriod;
 };
 
 
