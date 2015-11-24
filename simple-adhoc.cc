@@ -212,7 +212,9 @@ MyReceiver::ReceivePacket (Ptr<Socket> socket)
       uint8_t *outBuf = new uint8_t [packet -> GetSize()];
 
       packet->Print(std::cout);
-      MyHeader helloHeader;
+      MyHeader helloHeader, packetType;
+      packet -> RemoveHeader(packetType);
+      std::cout<<packetType.GetData();
       packet -> RemoveHeader(helloHeader);
       std::cout<<helloHeader.GetData();
       packet->CopyData (outBuf, packet -> GetSize());
@@ -240,6 +242,9 @@ void MyReceiver::SayHello (uint32_t pktCount, Time pktInterval)
       helloHeader.SetData(this -> mySocket ->GetNode () -> GetId ());
       Ptr<Packet> helloMsg = Create<Packet> (reinterpret_cast<const uint8_t*> ("hello world!"), 12);
       helloMsg -> AddHeader(helloHeader);
+      MyHeader packetType;
+      packetType.SetData((uint16_t) 0);
+      helloMsg -> AddHeader(packetType);
       this -> mySocket -> Send (helloMsg);
       Simulator::Schedule (pktInterval, &MyReceiver::SayHello, this, 10, pktInterval);
     }
