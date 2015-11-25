@@ -155,6 +155,7 @@ public:
   void Bind (InetSocketAddress local);
   void Receive (Callback<void, Ptr<Socket> > ReceivePacket);
   void ReceivePacket (Ptr<Socket> socket);
+  void Send (Ptr<Packet> msg);
   void SayHello (uint32_t pktCount, Time pktInterval);
 private:
   std::string m_data;
@@ -206,7 +207,6 @@ void
 MyReceiver::ReceivePacket (Ptr<Socket> socket)
 {
   Ptr<Packet> packet;
-  uint32_t num_packet = 0;
   while ( packet = socket->Recv ())
     {
       uint8_t *outBuf = new uint8_t [packet -> GetSize()];
@@ -214,9 +214,8 @@ MyReceiver::ReceivePacket (Ptr<Socket> socket)
       packet->Print(std::cout);
       MyHeader helloHeader, packetType;
       packet -> RemoveHeader(packetType);
-      std::cout<<packetType.GetData();
       packet -> RemoveHeader(helloHeader);
-      std::cout<<helloHeader.GetData();
+//    NS_LOG_UNCOND (helloHeader.GetData());
       packet->CopyData (outBuf, packet -> GetSize());
       
       std::ostringstream convert;
@@ -228,11 +227,13 @@ MyReceiver::ReceivePacket (Ptr<Socket> socket)
       //uint32_t nodeID = socket -> GetNode()->GetId();
       this -> SetData (output);
       NS_LOG_UNCOND (output );
-
-      num_packet++;
-      NS_LOG_UNCOND ("Received "<<num_packet<<" packets!");
     }
 } 
+
+void MyReceiver::Send (Ptr<Packet> msg)
+{
+  this -> mySocket -> Send(msg);
+}
 
 void MyReceiver::SayHello (uint32_t pktCount, Time pktInterval)
 {
@@ -245,8 +246,11 @@ void MyReceiver::SayHello (uint32_t pktCount, Time pktInterval)
       MyHeader packetType;
       packetType.SetData((uint16_t) 0);
       helloMsg -> AddHeader(packetType);
-      this -> mySocket -> Send (helloMsg);
-      Simulator::Schedule (pktInterval, &MyReceiver::SayHello, this, 10, pktInterval);
+      //Simulator::ScheduleNow(&MyReceiver::Send, this, helloMsg);
+      this -> Send (helloMsg);
+      this -> Send (helloMsg);
+      EventId sendEvent;
+      sendEvent = Simulator::Schedule (pktInterval, &MyReceiver::SayHello, this, pktCount-1, pktInterval);
     }
 }
 
@@ -259,7 +263,7 @@ int main (int argc, char *argv[])
   uint32_t numPackets = 10;
   double interval = 1.0; // seconds
   bool verbose = false;
-  uint32_t users = 50;
+  uint32_t users = 15;
 
   CommandLine cmd;
 

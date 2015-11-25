@@ -157,31 +157,51 @@ public:
   void ReceivePacket (Ptr<Socket> socket);
   void Send (Ptr<Packet> msg);
   void SayHello (uint32_t pktCount, Time pktInterval);
+  void SayMessage (uint32_t pktCount, Time interval);
+  Ptr<Node> GetNode ();
+  uint16_t GetCurrKeyNum();
 private:
   std::string m_data;
   Ptr<Socket> mySocket;
-  
+  Ptr<Node> myNode;
+  TypeId mytid;
+  uint16_t currentKeyNum;
 };
 
 MyReceiver::MyReceiver (Ptr<Node> node, TypeId tid)
 {
+  this -> myNode = node;
+  this -> mytid = tid;
   this -> mySocket = Socket::CreateSocket (node, tid);
+  InetSocketAddress local = InetSocketAddress (Ipv4Address::GetAny (), 80);
+  this -> Bind(local);
   InetSocketAddress remote = InetSocketAddress (Ipv4Address ("255.255.255.255"), 80);
   this -> mySocket ->SetAllowBroadcast (true);
   this -> mySocket -> Connect (remote);
   this -> m_data = "";
 }
 
+uint16_t
+MyReceiver::GetCurrKeyNum ()
+{
+  return this -> currentKeyNum;
+}
+
+Ptr<Node>
+MyReceiver::GetNode ()
+{
+  return this -> myNode;
+}
 void
 MyReceiver::Receive (Callback<void, Ptr<Socket> > ReceivePacket)
 {
-    mySocket -> SetRecvCallback (ReceivePacket);
+    this -> mySocket -> SetRecvCallback (ReceivePacket);
 }
 
 void
 MyReceiver::Bind (InetSocketAddress local)
 {
-    mySocket -> Bind (local);
+    this -> mySocket -> Bind (local);
 }
 
 Ptr<Socket>
@@ -209,13 +229,21 @@ MyReceiver::ReceivePacket (Ptr<Socket> socket)
   Ptr<Packet> packet;
   while ( packet = socket->Recv ())
     {
-      uint8_t *outBuf = new uint8_t [packet -> GetSize()];
 
       packet->Print(std::cout);
-      MyHeader helloHeader, packetType;
+      MyHeader nodeID, packetType;
       packet -> RemoveHeader(packetType);
-      packet -> RemoveHeader(helloHeader);
-//    NS_LOG_UNCOND (helloHeader.GetData());
+      packet -> RemoveHeader(nodeID);
+      if (packetType.GetData() != (uint16_t) 0)
+      {
+        MyHeader keyNum;
+        packet -> RemoveHeader(keyNum);
+    NS_LOG_UNCOND ("key: "<< keyNum.GetData());
+      }
+    NS_LOG_UNCOND ("sender: "<< nodeID.GetData());
+    NS_LOG_UNCOND ("type: "<< packetType.GetData());
+/*
+      uint8_t *outBuf = new uint8_t [packet -> GetSize()];
       packet->CopyData (outBuf, packet -> GetSize());
       
       std::ostringstream convert;
@@ -226,7 +254,8 @@ MyReceiver::ReceivePacket (Ptr<Socket> socket)
       std::string output = convert.str();
       //uint32_t nodeID = socket -> GetNode()->GetId();
       this -> SetData (output);
-      NS_LOG_UNCOND (output );
+//      NS_LOG_UNCOND (output );
+*/
     }
 } 
 
@@ -235,25 +264,42 @@ void MyReceiver::Send (Ptr<Packet> msg)
   this -> mySocket -> Send(msg);
 }
 
-void MyReceiver::SayHello (uint32_t pktCount, Time pktInterval)
+void MyReceiver::SayHello (uint32_t pktCount, Time interval)
 {
-  if (pktCount > 0)
-    {
-      MyHeader helloHeader;
-      helloHeader.SetData(this -> mySocket ->GetNode () -> GetId ());
-      Ptr<Packet> helloMsg = Create<Packet> (reinterpret_cast<const uint8_t*> ("hello world!"), 12);
-      helloMsg -> AddHeader(helloHeader);
-      MyHeader packetType;
-      packetType.SetData((uint16_t) 0);
-      helloMsg -> AddHeader(packetType);
-      //Simulator::ScheduleNow(&MyReceiver::Send, this, helloMsg);
-      this -> Send (helloMsg);
-      this -> Send (helloMsg);
-      EventId sendEvent;
-      sendEvent = Simulator::Schedule (pktInterval, &MyReceiver::SayHello, this, pktCount-1, pktInterval);
-    }
+  MyHeader encHeader;
+  encHeader.SetData(this -> mySocket ->GetNode () -> GetId ());
+  MyHeader packetType;
+  packetType.SetData((uint16_t) 0);
+  Ptr<Packet> helloMsg = Create<Packet> (100);
+  helloMsg -> AddHeader(encHeader);
+  helloMsg -> AddHeader(packetType);
+  Ptr<Packet> emptyMsg = Create<Packet> ();
+  this -> Send (emptyMsg);
+  this -> Send (helloMsg);
+  EventId sendEvent;
+  sendEvent = Simulator::Schedule (interval, &MyReceiver::SayHello, this, pktCount-1, interval);
+  NS_LOG_UNCOND (sendEvent.GetTs());
 }
 
+void MyReceiver::SayMessage (uint32_t pktCount, Time interval)
+{
+  MyHeader encHeader;
+  encHeader.SetData(this -> mySocket ->GetNode () -> GetId ());
+  MyHeader msgKeyNum;
+  msgKeyNum.SetData(this -> currentKeyNum);
+  MyHeader packetType;
+  packetType.SetData((uint16_t) 1);
+  Ptr<Packet> encMsg = Create<Packet> (100);
+  encMsg -> AddHeader(msgKeyNum);
+  encMsg -> AddHeader(encHeader);
+  encMsg -> AddHeader(packetType);
+  this -> Send (encMsg);
+  this -> currentKeyNum++;
+      EventId sendEvent;
+  sendEvent = Simulator::Schedule (interval, &MyReceiver::SayMessage, this, pktCount-1, interval);
+      //sendEvent = Simulator::Schedule (pktInterval, &MyReceiver::SayHello, this, pktCount-1, pktInterval);
+      NS_LOG_UNCOND (sendEvent.GetTs());
+}
 
 int main (int argc, char *argv[])
 {
@@ -354,17 +400,19 @@ int main (int argc, char *argv[])
   std::vector<MyReceiver* > myReceiverSink (users);
   for (uint32_t n = 0; n < users; n++) {
       MyReceiver *receiver = new MyReceiver (c.Get(n), tid);
-      InetSocketAddress local = InetSocketAddress (Ipv4Address::GetAny (), 80);
-      receiver -> Bind(local);
       receiver -> Receive (MakeCallback (&MyReceiver::ReceivePacket, receiver));
-      receiver -> SayHello(numPackets, interPacketInterval);
+      Simulator::Schedule (interPacketInterval, &MyReceiver::SayHello, receiver, numPackets, interPacketInterval);
+//      receiver -> SayHello(numPackets, interPacketInterval);
       myReceiverSink.at(n) = receiver;
   }
-  Simulator::Stop (Seconds (20.0));
+
+  MyReceiver* source = myReceiverSink.at(9);
+  Simulator::ScheduleWithContext (source->GetNode ()->GetId (),
+                                  Seconds (1.0), &MyReceiver::SayMessage, 
+                                  source, numPackets, Seconds (2.0));
+
+  Simulator::Stop (Seconds (25.0));
   AnimationInterface anim ("simple-adhoc.xml");
-  //anim.SetConstantPosition (csmaNodes.Get(1), 6, 10);
-  //anim.SetConstantPosition (csmaNodes.Get(2), 9, 10);
-  //anim.SetConstantPosition (csmaNod/es.Get(3), 12, 10);
   Simulator::Run ();
   Simulator::Destroy ();
 
