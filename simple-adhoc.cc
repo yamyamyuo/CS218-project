@@ -69,6 +69,7 @@
 #include <fstream>
 #include <vector>
 #include <string>
+#include "ScoreTable.h"//##
 
 using namespace ns3;
 
@@ -177,6 +178,7 @@ private:
   Ptr<Node> myNode;
   TypeId mytid;
   uint16_t currentKeyNum;
+  //EncounterList myList;
 };
 
 MyReceiver::MyReceiver (Ptr<Node> node, TypeId tid)
@@ -278,7 +280,7 @@ MyReceiver::ReceivePacket (Ptr<Socket> socket)
       packet->Print(std::cout);
       MyHeader nodeID, packetType;
       packet -> RemoveHeader(packetType);
-      NS_LOG_UNCOND ("type: "<< packetType.GetData());
+      NS_LOG_UNCOND ("packet type: "<< packetType.GetData());//##
       packet -> RemoveHeader(nodeID); //for hello message, this is sender. for key message, this is receiver
       NS_LOG_UNCOND ("id: "<< nodeID.GetData());
       
@@ -288,6 +290,16 @@ MyReceiver::ReceivePacket (Ptr<Socket> socket)
         packet -> RemoveHeader(keyNum);
         NS_LOG_UNCOND ("key: "<< keyNum.GetData());
       }
+      //Encounter list##
+  /*    if (packetType.GetData() == (uint16_t) 1) 
+      {
+        Time curr_time = new Time();
+        curr_time.GetMilliSeconds();
+        EncounterTuple *newTuple = new EncounterTuple(packetType.GetData(), curr_time);
+        EncounterListItem listItem = new EncounterListItem(newTuple);
+      }
+*/
+
     }
 } 
 
