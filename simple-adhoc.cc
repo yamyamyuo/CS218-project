@@ -313,7 +313,7 @@ void MyReceiver::SayKey(uint32_t pktCount, Time interval)
   MyHeader msgKeyNum;
   msgKeyNum.SetData(this -> currentKeyNum);
   MyHeader packetType;
-  packetType.SetData((uint16_t) 1);
+  packetType.SetData((uint16_t) 2);
   Ptr<Packet> keyMsg = Create<Packet> (100);
   keyMsg -> AddHeader(msgKeyNum);
   keyMsg -> AddHeader(idHeader);
@@ -321,8 +321,7 @@ void MyReceiver::SayKey(uint32_t pktCount, Time interval)
   this -> Send (keyMsg);
   this -> currentKeyNum++;
   EventId sendEvent;
-  sendEvent = Simulator::Schedule (interval, &MyReceiver::SayMessage, this, pktCount-1, interval);
-      //sendEvent = Simulator::Schedule (pktInterval, &MyReceiver::SayHello, this, pktCount-1, pktInterval);
+  sendEvent = Simulator::Schedule (interval, &MyReceiver::SayKey, this, pktCount-1, interval);
   NS_LOG_UNCOND (sendEvent.GetTs());
 }
 
