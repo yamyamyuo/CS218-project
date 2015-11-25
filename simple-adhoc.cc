@@ -52,6 +52,8 @@
 //
 
 #include "ns3/core-module.h"
+#include "ns3/event-id.h"
+#include "ns3/simulator.h"
 #include "ns3/network-module.h"
 #include "ns3/mobility-module.h"
 #include "ns3/config-store-module.h"
@@ -158,6 +160,7 @@ public:
   void Send (Ptr<Packet> msg);
   void SayHello (uint32_t pktCount, Time pktInterval);
   void SayMessage (uint32_t pktCount, Time interval);
+  void SayKey (uint32_t pktCount, Time interval);
   Ptr<Node> GetNode ();
   uint16_t GetCurrKeyNum();
 private:
@@ -233,7 +236,10 @@ MyReceiver::ReceivePacket (Ptr<Socket> socket)
       packet->Print(std::cout);
       MyHeader nodeID, packetType;
       packet -> RemoveHeader(packetType);
-      packet -> RemoveHeader(nodeID);
+      if (packetType.GetData() != (uint16_t) 1)
+      {
+        packet -> RemoveHeader(nodeID); //for hello message, this is sender. for key message, this is receiver
+      }
       if (packetType.GetData() != (uint16_t) 0)
       {
         MyHeader keyNum;
@@ -283,22 +289,41 @@ void MyReceiver::SayHello (uint32_t pktCount, Time interval)
 
 void MyReceiver::SayMessage (uint32_t pktCount, Time interval)
 {
-  MyHeader encHeader;
-  encHeader.SetData(this -> mySocket ->GetNode () -> GetId ());
+//  MyHeader idHeader;
+//  idHeader.SetData(this -> mySocket ->GetNode () -> GetId ());
   MyHeader msgKeyNum;
   msgKeyNum.SetData(this -> currentKeyNum);
   MyHeader packetType;
   packetType.SetData((uint16_t) 1);
   Ptr<Packet> encMsg = Create<Packet> (100);
   encMsg -> AddHeader(msgKeyNum);
-  encMsg -> AddHeader(encHeader);
+//  encMsg -> AddHeader(idHeader);
   encMsg -> AddHeader(packetType);
   this -> Send (encMsg);
-  this -> currentKeyNum++;
       EventId sendEvent;
   sendEvent = Simulator::Schedule (interval, &MyReceiver::SayMessage, this, pktCount-1, interval);
       //sendEvent = Simulator::Schedule (pktInterval, &MyReceiver::SayHello, this, pktCount-1, pktInterval);
       NS_LOG_UNCOND (sendEvent.GetTs());
+}
+
+void MyReceiver::SayKey(uint32_t pktCount, Time interval)
+{
+  MyHeader idHeader;
+  idHeader.SetData(this -> mySocket ->GetNode () -> GetId ());
+  MyHeader msgKeyNum;
+  msgKeyNum.SetData(this -> currentKeyNum);
+  MyHeader packetType;
+  packetType.SetData((uint16_t) 1);
+  Ptr<Packet> keyMsg = Create<Packet> (100);
+  keyMsg -> AddHeader(msgKeyNum);
+  keyMsg -> AddHeader(idHeader);
+  keyMsg -> AddHeader(packetType);
+  this -> Send (keyMsg);
+  this -> currentKeyNum++;
+  EventId sendEvent;
+  sendEvent = Simulator::Schedule (interval, &MyReceiver::SayMessage, this, pktCount-1, interval);
+      //sendEvent = Simulator::Schedule (pktInterval, &MyReceiver::SayHello, this, pktCount-1, pktInterval);
+  NS_LOG_UNCOND (sendEvent.GetTs());
 }
 
 int main (int argc, char *argv[])
@@ -407,10 +432,11 @@ int main (int argc, char *argv[])
   }
 
   MyReceiver* source = myReceiverSink.at(9);
-  Simulator::ScheduleWithContext (source->GetNode ()->GetId (),
+  Simulator::Schedule (Seconds (1.0), &MyReceiver::SayMessage, source, numPackets, Seconds (2.0));
+/*  Simulator::ScheduleWithContext (source->GetNode ()->GetId (),
                                   Seconds (1.0), &MyReceiver::SayMessage, 
                                   source, numPackets, Seconds (2.0));
-
+*/
   Simulator::Stop (Seconds (25.0));
   AnimationInterface anim ("simple-adhoc.xml");
   Simulator::Run ();
