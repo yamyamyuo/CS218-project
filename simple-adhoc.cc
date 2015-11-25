@@ -54,6 +54,7 @@
 #include "ns3/core-module.h"
 #include "ns3/event-id.h"
 #include "ns3/simulator.h"
+#include "ns3/nstime.h"
 #include "ns3/network-module.h"
 #include "ns3/mobility-module.h"
 #include "ns3/config-store-module.h"
@@ -151,21 +152,28 @@ class MyReceiver
 public: 
   MyReceiver (Ptr<Node> node, TypeId tid);
   Ptr<Socket> GetSocket ();
+  Ptr<Socket> GetHelloSocket ();
+  Ptr<Socket> GetKeyMsgSocket ();
+  Ptr<Socket> GetFwdSocket ();
   void SetData (std::string m_value);
   std::string GetData ();
   //virtual ~MyReceiver ();
   void Bind (InetSocketAddress local);
   void Receive (Callback<void, Ptr<Socket> > ReceivePacket);
   void ReceivePacket (Ptr<Socket> socket);
-  void Send (Ptr<Packet> msg);
+  void Send (Ptr<Packet> msg, Ptr<Socket> socket);
   void SayHello (uint32_t pktCount, Time pktInterval);
   void SayMessage (uint32_t pktCount, Time interval, uint16_t recvID);
-  void SayKey (uint32_t pktCount, Time interval);
+  void SayKey (uint32_t pktCount, Time interval, uint16_t recvID);
+  void Forward (uint16_t recvID, uint16_t pktT, uint16_t key);
   Ptr<Node> GetNode ();
   uint16_t GetCurrKeyNum();
 private:
   std::string m_data;
   Ptr<Socket> mySocket;
+  Ptr<Socket> helloSocket;
+  Ptr<Socket> keyMsgSocket;
+  Ptr<Socket> fwdSocket;
   Ptr<Node> myNode;
   TypeId mytid;
   uint16_t currentKeyNum;
@@ -176,12 +184,40 @@ MyReceiver::MyReceiver (Ptr<Node> node, TypeId tid)
   this -> myNode = node;
   this -> mytid = tid;
   this -> mySocket = Socket::CreateSocket (node, tid);
+  this -> helloSocket = Socket::CreateSocket (node, tid);
+  this -> keyMsgSocket = Socket::CreateSocket (node, tid);
+  this -> fwdSocket = Socket::CreateSocket (node, tid);
   InetSocketAddress local = InetSocketAddress (Ipv4Address::GetAny (), 80);
   this -> Bind(local);
   InetSocketAddress remote = InetSocketAddress (Ipv4Address ("255.255.255.255"), 80);
   this -> mySocket ->SetAllowBroadcast (true);
+  this -> helloSocket ->SetAllowBroadcast (true);
+  this -> keyMsgSocket ->SetAllowBroadcast (true);
+  this -> fwdSocket ->SetAllowBroadcast (true);
+
   this -> mySocket -> Connect (remote);
+  this -> helloSocket -> Connect (remote);
+  this -> keyMsgSocket -> Connect (remote);
+  this -> fwdSocket -> Connect (remote);
   this -> m_data = "";
+}
+
+Ptr<Socket>
+MyReceiver::GetHelloSocket ()
+{
+  return this -> helloSocket;
+}
+
+Ptr<Socket>
+MyReceiver::GetKeyMsgSocket ()
+{
+  return this -> keyMsgSocket;
+}
+
+Ptr<Socket>
+MyReceiver::GetFwdSocket ()
+{
+  return this -> fwdSocket;
 }
 
 uint16_t
@@ -199,12 +235,18 @@ void
 MyReceiver::Receive (Callback<void, Ptr<Socket> > ReceivePacket)
 {
     this -> mySocket -> SetRecvCallback (ReceivePacket);
+    this -> helloSocket -> SetRecvCallback (ReceivePacket);
+    this -> keyMsgSocket -> SetRecvCallback (ReceivePacket);
+    this -> fwdSocket -> SetRecvCallback (ReceivePacket);
 }
 
 void
 MyReceiver::Bind (InetSocketAddress local)
 {
     this -> mySocket -> Bind (local);
+    this -> helloSocket -> Bind (local);
+    this -> keyMsgSocket -> Bind (local);
+    this -> fwdSocket -> Bind (local);
 }
 
 Ptr<Socket>
@@ -237,11 +279,9 @@ MyReceiver::ReceivePacket (Ptr<Socket> socket)
       MyHeader nodeID, packetType;
       packet -> RemoveHeader(packetType);
       NS_LOG_UNCOND ("type: "<< packetType.GetData());
-      if (packetType.GetData() != (uint16_t) 1)
-      {
-        packet -> RemoveHeader(nodeID); //for hello message, this is sender. for key message, this is receiver
-        NS_LOG_UNCOND ("sender: "<< nodeID.GetData());
-      }
+      packet -> RemoveHeader(nodeID); //for hello message, this is sender. for key message, this is receiver
+      NS_LOG_UNCOND ("id: "<< nodeID.GetData());
+      
       if (packetType.GetData() != (uint16_t) 0)
       {
         MyHeader keyNum;
@@ -251,9 +291,9 @@ MyReceiver::ReceivePacket (Ptr<Socket> socket)
     }
 } 
 
-void MyReceiver::Send (Ptr<Packet> msg)
+void MyReceiver::Send (Ptr<Packet> msg, Ptr<Socket> socket)
 {
-  this -> mySocket -> Send(msg);
+  socket -> Send(msg);
 }
 
 void MyReceiver::SayHello (uint32_t pktCount, Time interval)
@@ -266,8 +306,8 @@ void MyReceiver::SayHello (uint32_t pktCount, Time interval)
   helloMsg -> AddHeader(encHeader);
   helloMsg -> AddHeader(packetType);
   Ptr<Packet> emptyMsg = Create<Packet> ();
-  this -> Send (emptyMsg);
-  this -> Send (helloMsg);
+  this -> Send (emptyMsg, this -> helloSocket);
+  this -> Send (helloMsg, this -> helloSocket);
   EventId sendEvent;
   sendEvent = Simulator::Schedule (interval, &MyReceiver::SayHello, this, pktCount-1, interval);
   NS_LOG_UNCOND (sendEvent.GetTs());
@@ -285,17 +325,17 @@ void MyReceiver::SayMessage (uint32_t pktCount, Time interval, uint16_t recvID)
   encMsg -> AddHeader(msgKeyNum);
   encMsg -> AddHeader(idHeader);
   encMsg -> AddHeader(packetType);
-  this -> Send (encMsg);
-      EventId sendEvent;
+  this -> Send (encMsg, this -> keyMsgSocket);
+  EventId sendEvent;
   sendEvent = Simulator::Schedule (interval, &MyReceiver::SayMessage, this, pktCount-1, interval, recvID);
-      //sendEvent = Simulator::Schedule (pktInterval, &MyReceiver::SayHello, this, pktCount-1, pktInterval);
-      NS_LOG_UNCOND (sendEvent.GetTs());
+  //sendEvent = Simulator::Schedule (pktInterval, &MyReceiver::SayHello, this, pktCount-1, pktInterval);
+  NS_LOG_UNCOND (sendEvent.GetTs());
 }
 
-void MyReceiver::SayKey(uint32_t pktCount, Time interval)
+void MyReceiver::SayKey(uint32_t pktCount, Time interval, uint16_t recvID)
 {
   MyHeader idHeader;
-  idHeader.SetData(this -> mySocket ->GetNode () -> GetId ());
+  idHeader.SetData(recvID);
   MyHeader msgKeyNum;
   msgKeyNum.SetData(this -> currentKeyNum);
   MyHeader packetType;
@@ -304,11 +344,24 @@ void MyReceiver::SayKey(uint32_t pktCount, Time interval)
   keyMsg -> AddHeader(msgKeyNum);
   keyMsg -> AddHeader(idHeader);
   keyMsg -> AddHeader(packetType);
-  this -> Send (keyMsg);
+  this -> Send (keyMsg, this -> keyMsgSocket);
   this -> currentKeyNum++;
   EventId sendEvent;
-  sendEvent = Simulator::Schedule (interval, &MyReceiver::SayKey, this, pktCount-1, interval);
+  sendEvent = Simulator::Schedule (interval, &MyReceiver::SayKey, this, pktCount-1, interval, recvID);
   NS_LOG_UNCOND (sendEvent.GetTs());
+}
+
+void MyReceiver::Forward (uint16_t recvID, uint16_t pktT, uint16_t key) 
+{
+  MyHeader rcv, pktType, keyNum;
+  rcv.SetData(recvID);
+  pktType.SetData(pktT);
+  keyNum.SetData(key);
+  Ptr<Packet> msg = Create<Packet> (100);
+  msg -> AddHeader(keyNum);
+  msg -> AddHeader(rcv);
+  msg -> AddHeader(pktType);
+  this -> Send (msg, this -> fwdSocket);
 }
 
 int main (int argc, char *argv[])
@@ -411,13 +464,14 @@ int main (int argc, char *argv[])
   for (uint32_t n = 0; n < users; n++) {
       MyReceiver *receiver = new MyReceiver (c.Get(n), tid);
       receiver -> Receive (MakeCallback (&MyReceiver::ReceivePacket, receiver));
-Simulator::Schedule (interPacketInterval, &MyReceiver::SayHello, receiver, numPackets, Seconds (3.0));
+Simulator::Schedule (interPacketInterval, &MyReceiver::SayHello, receiver, numPackets, Seconds (1.0));
 //      receiver -> SayHello(numPackets, interPacketInterval);
       myReceiverSink.at(n) = receiver;
   }
 
 MyReceiver* source = myReceiverSink.at(9);
-Simulator::Schedule (Seconds (2.0), &MyReceiver::SayMessage, source, numPackets, Seconds (2.0), (uint16_t) 999);
+//Simulator::Schedule (Seconds (1.0), &MyReceiver::SayMessage, source, numPackets, Seconds (2.0), (uint16_t) 999);
+Simulator::Schedule (Seconds (1.0), &MyReceiver::SayKey, source, numPackets, Seconds (2.0), (uint16_t) 999);
 // Simulator::ScheduleWithContext (source->GetNode ()->GetId (),
  //                                 Seconds (1.0), &MyReceiver::SayMessage, 
    //                               source, numPackets, Seconds (2.0));

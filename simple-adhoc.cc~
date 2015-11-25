@@ -159,7 +159,7 @@ public:
   void ReceivePacket (Ptr<Socket> socket);
   void Send (Ptr<Packet> msg);
   void SayHello (uint32_t pktCount, Time pktInterval);
-  void SayMessage (uint32_t pktCount, Time interval);
+  void SayMessage (uint32_t pktCount, Time interval, uint16_t recvID);
   void SayKey (uint32_t pktCount, Time interval);
   Ptr<Node> GetNode ();
   uint16_t GetCurrKeyNum();
