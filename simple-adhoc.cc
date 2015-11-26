@@ -213,7 +213,12 @@ EncounterList::calculateMaxScore(int nodeSize, Time curr_time, uint16_t &max_id,
 
 // encounter list function define ends
 
-
+/**********
+*
+* MyHeader is a generic header that is 2 bytes. 
+* This is to accomodate packets with varying headers for anonymity.
+*
+**********/
 class MyHeader : public Header 
 {
 public:
@@ -288,6 +293,38 @@ MyHeader::GetData (void) const
   return m_data;
 }
 
+/******
+*
+* QItem used to maintain a queue|vector of unmatched keys and messages
+*
+******/
+class QItem
+{
+public:
+QItem(uint16_t pkt, uint16_t key);
+uint16_t GetPktType ();
+uint16_t GetKeyNum ();
+uint64_t GetTimestmp ();
+private:
+  uint16_t pktType;
+  uint16_t keyNum;
+  uint64_t timestmp;
+};
+
+QItem::QItem(uint16_t pkt, uint16_t key)
+{
+  this -> pktType = pkt;
+  this -> keyNum = key;
+  Time t = Simulator::Now();
+  this -> timestmp = t.GetMilliSeconds();
+}
+
+/*****
+*
+* MyReceiver is the wrapper for each node. This class contains the routing protocol. 
+* Each node responding to packets as according to the protocol
+*
+*****/
 class MyReceiver
 {
 
@@ -311,6 +348,8 @@ public:
   Ptr<Node> GetNode ();
   uint16_t GetCurrKeyNum();
 private:
+  std::vector<QItem* > messageQ ();
+  std::vector<QItem* > keyQ ();
   std::string m_data;
   Ptr<Socket> mySocket;
   Ptr<Socket> helloSocket;
@@ -419,10 +458,10 @@ MyReceiver::ReceivePacket (Ptr<Socket> socket)
   while ( packet = socket->Recv ())
     {
 
-      packet -> Print(std::cout);
+      packet->Print(std::cout);
       MyHeader nodeID, packetType;
       packet -> RemoveHeader(packetType);
-      NS_LOG_UNCOND ("packet type: "<< packetType.GetData());
+      NS_LOG_UNCOND ("type: "<< packetType.GetData());
       packet -> RemoveHeader(nodeID); //for hello message, this is sender. for key message, this is receiver
       NS_LOG_UNCOND ("id: "<< nodeID.GetData());
       
@@ -432,6 +471,7 @@ MyReceiver::ReceivePacket (Ptr<Socket> socket)
         packet -> RemoveHeader(keyNum);
         NS_LOG_UNCOND ("key: "<< keyNum.GetData());
       }
+
       //when it is hellomsg Store in Encounter list for score calculation
       if (packetType.GetData() == (uint16_t) 0) 
       {
@@ -477,7 +517,7 @@ void MyReceiver::SayHello (uint32_t pktCount, Time interval)
   this -> Send (helloMsg, this -> helloSocket);
   EventId sendEvent;
   sendEvent = Simulator::Schedule (interval, &MyReceiver::SayHello, this, pktCount-1, interval);
-  NS_LOG_UNCOND (sendEvent.GetTs());
+  //NS_LOG_UNCOND (sendEvent.GetTs());
 }
 
 void MyReceiver::SayMessage (uint32_t pktCount, Time interval, uint16_t recvID)
@@ -513,9 +553,10 @@ void MyReceiver::SayKey(uint32_t pktCount, Time interval, uint16_t recvID)
   keyMsg -> AddHeader(packetType);
   this -> Send (keyMsg, this -> keyMsgSocket);
   this -> currentKeyNum++;
+
   EventId sendEvent;
   sendEvent = Simulator::Schedule (interval, &MyReceiver::SayKey, this, pktCount-1, interval, recvID);
-  NS_LOG_UNCOND (sendEvent.GetTs());
+  //NS_LOG_UNCOND (sendEvent.GetTs());
 }
 
 void MyReceiver::Forward (uint16_t recvID, uint16_t pktT, uint16_t key) 
@@ -631,19 +672,19 @@ int main (int argc, char *argv[])
   for (uint32_t n = 0; n < users; n++) {
       MyReceiver *receiver = new MyReceiver (c.Get(n), tid);
       receiver -> Receive (MakeCallback (&MyReceiver::ReceivePacket, receiver));
-Simulator::Schedule (interPacketInterval, &MyReceiver::SayHello, receiver, numPackets, Seconds (1.0));
+Simulator::Schedule (Seconds (0.1), &MyReceiver::SayHello, receiver, numPackets, Seconds (2.0));
 //      receiver -> SayHello(numPackets, interPacketInterval);
       myReceiverSink.at(n) = receiver;
   }
 
-MyReceiver* source = myReceiverSink.at(9);
-//Simulator::Schedule (Seconds (1.0), &MyReceiver::SayMessage, source, numPackets, Seconds (2.0), (uint16_t) 999);
-Simulator::Schedule (Seconds (1.0), &MyReceiver::SayKey, source, numPackets, Seconds (2.0), (uint16_t) 999);
+MyReceiver* source = myReceiverSink.at(2);
+Simulator::Schedule (Seconds (0.5), &MyReceiver::SayMessage, source, numPackets, Seconds (2.0), (uint16_t) 999);
+Simulator::Schedule (Seconds (1.5), &MyReceiver::SayKey, source, numPackets, Seconds (2.0), (uint16_t) 999);
 // Simulator::ScheduleWithContext (source->GetNode ()->GetId (),
  //                                 Seconds (1.0), &MyReceiver::SayMessage, 
    //                               source, numPackets, Seconds (2.0));
 
-  Simulator::Stop (Seconds (10.0));
+  Simulator::Stop (Seconds (25.0));
   AnimationInterface anim ("simple-adhoc.xml");
   Simulator::Run ();
   Simulator::Destroy ();
