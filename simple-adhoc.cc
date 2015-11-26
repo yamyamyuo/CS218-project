@@ -65,13 +65,154 @@
 #include "ns3/packet.h"
 #include "ns3/header.h"
 
+//new added
 #include <iostream>
 #include <fstream>
 #include <vector>
 #include <string>
-#include "ScoreTable.h"//##
+#include <map>
+#include <list>
+#include <math.h>
 
 using namespace ns3;
+
+//the encounter list classes define
+class EncounterTuple : public Object
+{
+public:
+  EncounterTuple();
+  EncounterTuple(uint32_t id, Time time);
+  uint32_t node_id;
+  Time timestamp;
+  Time GetTime();
+  uint32_t GetID();
+};
+
+class EncounterListItem : public Object
+{
+public:
+  EncounterListItem(EncounterTuple *tuple);
+
+  EncounterTuple curr_data;
+  EncounterListItem* prev;
+  EncounterListItem* next;
+};
+
+class EncounterList : public Object
+{
+public:
+  EncounterList();
+  EncounterList(int nodeSize, double factor, double lambda, Time validPeriod);
+  void InsertItem(EncounterListItem *current);
+  void DeleteItem(Time end);
+  void Next();
+  void calculateMaxScore(int nodeSize, Time curr_time, uint16_t &max_id, int &max_score);
+  int nodeSize;
+  double factor;
+  double lambda;
+  Time validPeriod;
+  EncounterListItem* head;
+  EncounterListItem* tail;
+}; // class define ends;
+
+// function define starts
+ 
+EncounterTuple::EncounterTuple()
+{
+}
+
+EncounterTuple::EncounterTuple(uint32_t id, Time time)
+{
+  node_id = id;
+  timestamp = time;
+}
+
+Time
+EncounterTuple::GetTime(){
+  return this -> timestamp;
+}
+
+uint32_t
+EncounterTuple::GetID()
+{
+  return this -> node_id;
+}
+
+EncounterListItem::EncounterListItem(EncounterTuple *tuple)
+{
+  curr_data.node_id = tuple -> node_id;
+  curr_data.timestamp = tuple -> timestamp;
+}
+
+EncounterList::EncounterList()
+{
+}
+
+EncounterList::EncounterList(int nodeSize, double factor, double lambda, Time validPeriod) 
+{
+  head = NULL;
+  tail = NULL;
+  factor = factor;
+  lambda = lambda;
+  validPeriod = validPeriod;
+  //factor = 1 / 2.0;
+  //lambda = exp (-4);
+  //validPeriod = 20;
+}
+
+void
+EncounterList::InsertItem(EncounterListItem *current)
+{
+  if (head == NULL && tail == NULL) {
+    head = current;
+    tail = current;
+    return ;
+  }
+  current -> prev = tail;
+  tail -> next = current;
+  tail = current;
+  current -> next = NULL;
+}
+
+void
+EncounterList::DeleteItem(Time end)
+{
+  Time tx = head -> curr_data.GetTime();
+  while (tx < end && head != NULL)
+  {
+    head = head -> next;
+    if (head == NULL)
+    {
+      tail = NULL;
+      return;
+    }
+    head -> prev = NULL;
+    tx = head -> curr_data.GetTime();
+  }
+}
+
+void
+EncounterList::calculateMaxScore(int nodeSize, Time curr_time, uint16_t &max_id, int &max_score) 
+{
+  std::vector<int> trustScore(nodeSize);
+  EncounterListItem *p = head;
+  while (p -> next != NULL )
+  {
+    EncounterTuple curr_tuple = p -> curr_data; 
+    trustScore[curr_tuple.node_id] += pow (factor, lambda * (curr_time.GetSeconds() - curr_tuple.timestamp.GetSeconds()));
+  }
+  max_id = 0;
+  max_score = 0;
+  for (int i = 0 ; i < nodeSize ; i++) {
+    if (trustScore[i] > max_score) {
+      max_score = trustScore[i];
+      max_id = i;  
+    }
+  }
+}
+
+// encounter list function define ends
+
 
 class MyHeader : public Header 
 {
@@ -178,7 +319,7 @@ private:
   Ptr<Node> myNode;
   TypeId mytid;
   uint16_t currentKeyNum;
-  //EncounterList myList;
+  EncounterList *myList;
 };
 
 MyReceiver::MyReceiver (Ptr<Node> node, TypeId tid)
@@ -202,6 +343,7 @@ MyReceiver::MyReceiver (Ptr<Node> node, TypeId tid)
   this -> keyMsgSocket -> Connect (remote);
   this -> fwdSocket -> Connect (remote);
   this -> m_data = "";
+  this -> myList = new EncounterList(500, 1/2.0, exp (-4), Time(NanoSeconds(200000000)));//we should test this data
 }
 
 Ptr<Socket>
@@ -277,10 +419,10 @@ MyReceiver::ReceivePacket (Ptr<Socket> socket)
   while ( packet = socket->Recv ())
     {
 
-      packet->Print(std::cout);
+      packet -> Print(std::cout);
       MyHeader nodeID, packetType;
       packet -> RemoveHeader(packetType);
-      NS_LOG_UNCOND ("packet type: "<< packetType.GetData());//##
+      NS_LOG_UNCOND ("packet type: "<< packetType.GetData());
       packet -> RemoveHeader(nodeID); //for hello message, this is sender. for key message, this is receiver
       NS_LOG_UNCOND ("id: "<< nodeID.GetData());
       
@@ -290,16 +432,29 @@ MyReceiver::ReceivePacket (Ptr<Socket> socket)
         packet -> RemoveHeader(keyNum);
         NS_LOG_UNCOND ("key: "<< keyNum.GetData());
       }
-      //Encounter list##
-  /*    if (packetType.GetData() == (uint16_t) 1) 
+      //when it is hellomsg Store in Encounter list for score calculation
+      if (packetType.GetData() == (uint16_t) 0) 
       {
-        Time curr_time = new Time();
-        curr_time.GetMilliSeconds();
-        EncounterTuple *newTuple = new EncounterTuple(packetType.GetData(), curr_time);
-        EncounterListItem listItem = new EncounterListItem(newTuple);
+        Time timestamp = Now();
+        EncounterTuple *newTuple = new EncounterTuple(packetType.GetData(), timestamp);
+        EncounterListItem *listItem = new EncounterListItem(newTuple);
+        myList -> InsertItem(listItem);
       }
-*/
-
+      //if not hellomsg and header id is 999 or itself call forward function
+      if (packetType.GetData() != (uint16_t) 0)
+      {
+        if (nodeID.GetData() == (uint16_t) 999 || 
+            nodeID.GetData() == this -> mySocket ->GetNode () -> GetId ())
+        {     
+          //Pseudo code to monitor the max score. 
+          //Time time = Now();
+          uint16_t max_id = 8;
+          //int &max_score = NULL;
+          //myList -> calculateMaxScore(500, time, max_id, max_score);
+          this -> Forward (max_id, packetType.GetData(), nodeID.GetData());
+        }
+      }
+     
     }
 } 
 
