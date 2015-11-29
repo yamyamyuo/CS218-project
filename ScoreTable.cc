@@ -90,24 +90,25 @@ EncounterList::DeleteItem(Time start, Time end)
     max_score[OUT] the score of that popular node 
 
 */
-void
-EncounterList::calculateMaxScore(int nodeSize, Time curr_time, int &max_id, int &max_score) 
+uint32_t 
+EncounterList::calculateMaxScore(int nodeSize, Time curr_time) 
 {
-  std::vector<int> trustScore(nodeSize);
+  std::vector<uint32_t> trustScore(nodeSize);
   EncounterListItem *p = head;
   while (p -> next != NULL )
   {
     EncounterTuple curr_tuple = p -> curr_data; 
     trustScore[curr_tuple.node_id] += pow (factor, lambda * (curr_time.GetSeconds() - curr_tuple.timestamp.GetSeconds()));
   }
-  max_id = 0;
-  max_score = 0;
+  uint32_t max_id = -1;
+  uint32_t max_score = 0;
   for (int i = 0 ; i < nodeSize ; i++) {
     if (trustScore[i] > max_score) {
       max_score = trustScore[i];
       max_id = i;  
     }
   }
+  return max_id;
 }
 
 
@@ -145,4 +146,9 @@ ScoreTable::updateTable(EncounterTable item) {
 */
 
 }// namespace ns3
+
+int main()
+{
+  return 0;
+}
 

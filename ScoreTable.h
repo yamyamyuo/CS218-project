@@ -40,7 +40,7 @@ public:
   void InsertItem(EncounterListItem *current);
   void DeleteItem(Time start, Time end);
   void Next();
-  void calculateMaxScore(int nodeSize, Time curr_time, int &max_id, int &max_score);
+  uint32_t calculateMaxScore(int nodeSize, Time curr_time);
 
   int nodeSize;
   double factor;
