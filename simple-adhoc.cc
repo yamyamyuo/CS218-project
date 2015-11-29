@@ -77,7 +77,7 @@
 using namespace ns3;
 
 //the encounter list classes define
-class EncounterTuple
+class EncounterTuple : public Object
 {
 public:
   EncounterTuple();
@@ -88,7 +88,7 @@ public:
   uint32_t GetID();
 };
 
-class EncounterListItem
+class EncounterListItem : public Object
 {
 public:
   EncounterListItem(EncounterTuple *tuple);
@@ -98,16 +98,15 @@ public:
   EncounterListItem* next;
 };
 
-class EncounterList
+class EncounterList : public Object
 {
 public:
   EncounterList();
   EncounterList(int nodeSize, double factor, double lambda, Time validPeriod);
   void InsertItem(EncounterListItem *current);
-  void DeleteItem(Time start, Time end);
+  void DeleteItem(Time end);
   void Next();
   uint32_t calculateMaxScore(int nodeSize, Time curr_time);
-
   int nodeSize;
   double factor;
   double lambda;
@@ -147,8 +146,6 @@ EncounterListItem::EncounterListItem(EncounterTuple *tuple)
 
 EncounterList::EncounterList()
 {
-  head = NULL;
-  tail = NULL;
 }
 
 EncounterList::EncounterList(int nodeSize, double factor, double lambda, Time validPeriod) 
@@ -166,8 +163,11 @@ EncounterList::EncounterList(int nodeSize, double factor, double lambda, Time va
 void
 EncounterList::InsertItem(EncounterListItem *current)
 {
-  if (head == NULL)
+  if (head == NULL && tail == NULL) {
     head = current;
+    tail = current;
+    return ;
+  }
   current -> prev = tail;
   tail -> next = current;
   tail = current;
@@ -175,24 +175,22 @@ EncounterList::InsertItem(EncounterListItem *current)
 }
 
 void
-EncounterList::DeleteItem(Time start, Time end)
+EncounterList::DeleteItem(Time end)
 {
   Time tx = head -> curr_data.GetTime();
-  while (tx < end)
+  while (tx < end && head != NULL)
   {
     head = head -> next;
+    if (head == NULL)
+    {
+      tail = NULL;
+      return;
+    }
     head -> prev = NULL;
     tx = head -> curr_data.GetTime();
   }
 }
 
-/*  calculateMaxScore is to go through the whole EncounterList and find out the most popular node so far
-    nodeSize[IN]   number of nodes in network 
-    curr_time[IN]  current time
-    max_id[OUT]    the id of the most popular node at present
-    max_score[OUT] the score of that popular node 
-
-*/
 uint32_t 
 EncounterList::calculateMaxScore(int nodeSize, Time curr_time) 
 {

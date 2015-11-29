@@ -77,7 +77,7 @@
 using namespace ns3;
 
 //the encounter list classes define
-class EncounterTuple : public Object
+class EncounterTuple
 {
 public:
   EncounterTuple();
@@ -88,7 +88,7 @@ public:
   uint32_t GetID();
 };
 
-class EncounterListItem : public Object
+class EncounterListItem
 {
 public:
   EncounterListItem(EncounterTuple *tuple);
@@ -98,15 +98,16 @@ public:
   EncounterListItem* next;
 };
 
-class EncounterList : public Object
+class EncounterList
 {
 public:
   EncounterList();
   EncounterList(int nodeSize, double factor, double lambda, Time validPeriod);
   void InsertItem(EncounterListItem *current);
-  void DeleteItem(Time end);
+  void DeleteItem(Time start, Time end);
   void Next();
-  void calculateMaxScore(int nodeSize, Time curr_time, uint16_t &max_id, int &max_score);
+  uint32_t calculateMaxScore(int nodeSize, Time curr_time);
+
   int nodeSize;
   double factor;
   double lambda;
@@ -146,6 +147,8 @@ EncounterListItem::EncounterListItem(EncounterTuple *tuple)
 
 EncounterList::EncounterList()
 {
+  head = NULL;
+  tail = NULL;
 }
 
 EncounterList::EncounterList(int nodeSize, double factor, double lambda, Time validPeriod) 
@@ -163,11 +166,8 @@ EncounterList::EncounterList(int nodeSize, double factor, double lambda, Time va
 void
 EncounterList::InsertItem(EncounterListItem *current)
 {
-  if (head == NULL && tail == NULL) {
+  if (head == NULL)
     head = current;
-    tail = current;
-    return ;
-  }
   current -> prev = tail;
   tail -> next = current;
   tail = current;
@@ -175,40 +175,43 @@ EncounterList::InsertItem(EncounterListItem *current)
 }
 
 void
-EncounterList::DeleteItem(Time end)
+EncounterList::DeleteItem(Time start, Time end)
 {
   Time tx = head -> curr_data.GetTime();
-  while (tx < end && head != NULL)
+  while (tx < end)
   {
     head = head -> next;
-    if (head == NULL)
-    {
-      tail = NULL;
-      return;
-    }
     head -> prev = NULL;
     tx = head -> curr_data.GetTime();
   }
 }
 
-void
-EncounterList::calculateMaxScore(int nodeSize, Time curr_time, uint16_t &max_id, int &max_score) 
+/*  calculateMaxScore is to go through the whole EncounterList and find out the most popular node so far
+    nodeSize[IN]   number of nodes in network 
+    curr_time[IN]  current time
+    max_id[OUT]    the id of the most popular node at present
+    max_score[OUT] the score of that popular node 
+
+*/
+uint32_t 
+EncounterList::calculateMaxScore(int nodeSize, Time curr_time) 
 {
-  std::vector<int> trustScore(nodeSize);
+  std::vector<uint32_t> trustScore(nodeSize);
   EncounterListItem *p = head;
   while (p -> next != NULL )
   {
     EncounterTuple curr_tuple = p -> curr_data; 
     trustScore[curr_tuple.node_id] += pow (factor, lambda * (curr_time.GetSeconds() - curr_tuple.timestamp.GetSeconds()));
   }
-  max_id = 0;
-  max_score = 0;
+  uint32_t max_id = -1;
+  uint32_t max_score = 0;
   for (int i = 0 ; i < nodeSize ; i++) {
     if (trustScore[i] > max_score) {
       max_score = trustScore[i];
       max_id = i;  
     }
   }
+  return max_id;
 }
 
 // encounter list function define ends
@@ -348,8 +351,8 @@ public:
   Ptr<Node> GetNode ();
   uint16_t GetCurrKeyNum();
 private:
-  std::vector<QItem* > messageQ ();
-  std::vector<QItem* > keyQ ();
+  std::vector<uint64_t> messageQ; //integer holds time stamp
+  std::vector<uint64_t> keyQ;
   std::string m_data;
   Ptr<Socket> mySocket;
   Ptr<Socket> helloSocket;
@@ -363,6 +366,8 @@ private:
 
 MyReceiver::MyReceiver (Ptr<Node> node, TypeId tid)
 {
+  this -> messageQ.resize(999, 0);
+  this -> keyQ.resize(999, 0);
   this -> myNode = node;
   this -> mytid = tid;
   this -> mySocket = Socket::CreateSocket (node, tid);
@@ -469,7 +474,10 @@ MyReceiver::ReceivePacket (Ptr<Socket> socket)
       {
         MyHeader keyNum;
         packet -> RemoveHeader(keyNum);
-        NS_LOG_UNCOND ("key: "<< keyNum.GetData());
+        if (packetType.GetData() != (uint16_t) 1)
+          NS_LOG_UNCOND ("msg: "<< keyNum.GetData());
+        else
+          NS_LOG_UNCOND ("key: "<< keyNum.GetData());
       }
 
       //when it is hellomsg Store in Encounter list for score calculation
@@ -483,6 +491,24 @@ MyReceiver::ReceivePacket (Ptr<Socket> socket)
       //if not hellomsg and header id is 999 or itself call forward function
       if (packetType.GetData() != (uint16_t) 0)
       {
+          //Chih: check key/msg q
+        Time t = Simulator::Now();
+        if (packetType.GetData() == (uint16_t) 1) {
+          //case when packet type is message
+          //check if key exist
+          //update msg q
+        }
+        if (packetType.GetData() == (uint16_t) 2) {
+          //case when packet type is key
+          //check if key exist
+          for (int i = 0; i < 999; i++) {
+            if (this -> keyQ[i] != 0) {
+              
+            }
+          }
+          //update msg q
+        }
+        //this -> timestmp = t.GetMilliSeconds();
         if (nodeID.GetData() == (uint16_t) 999 || 
             nodeID.GetData() == this -> mySocket ->GetNode () -> GetId ())
         {     
