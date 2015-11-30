@@ -76,6 +76,8 @@
 
 using namespace ns3;
 
+int nodesize_global = 500;
+double threshold_global = 1.0;
 //the encounter list classes define
 class EncounterTuple : public Object
 {
@@ -106,7 +108,7 @@ public:
   void InsertItem(EncounterListItem *current);
   void DeleteItem(Time end);
   void Next();
-  uint32_t calculateMaxScore(int nodeSize, Time curr_time);
+  std::vector<uint32_t> calculateMaxScore(int nodeSize, Time curr_time, double threshold);
   int nodeSize;
   double factor;
   double lambda;
@@ -192,8 +194,8 @@ EncounterList::DeleteItem(Time end)
   }
 }
 
-uint32_t 
-EncounterList::calculateMaxScore(int nodeSize, Time curr_time) 
+std::vector<uint32_t> 
+EncounterList::calculateMaxScore(int nodeSize, Time curr_time, double threshold) 
 {
   std::vector<double> trustScore(nodeSize);
   EncounterListItem *p = this -> head;
@@ -202,16 +204,17 @@ EncounterList::calculateMaxScore(int nodeSize, Time curr_time)
     EncounterTuple curr_tuple = p -> curr_data; 
     trustScore[curr_tuple.GetID()] += pow (factor, lambda * (curr_time.GetSeconds() - curr_tuple.timestamp.GetSeconds()));
     p = p -> next;
+    NS_LOG_UNCOND (curr_tuple.GetID());
+    NS_LOG_UNCOND (trustScore[curr_tuple.GetID()]);
   }
-  uint32_t max_id = -1;
-  uint32_t max_score = 0;
+
+  std::vector<uint32_t> bunch_of_nodeID;
   for (int i = 0 ; i < nodeSize ; i++) {
-    if (trustScore[i] > max_score) {
-      max_score = trustScore[i];
-      max_id = i;  
+    if (trustScore[i] > threshold) {
+      bunch_of_nodeID.push_back((uint32_t) i);
     }
   }
-  return max_id;
+  return bunch_of_nodeID;
 }
 
 // encounter list function define ends
@@ -387,7 +390,7 @@ MyReceiver::MyReceiver (Ptr<Node> node, TypeId tid)
   this -> keyMsgSocket -> Connect (remote);
   this -> fwdSocket -> Connect (remote);
   this -> m_data = "";
-  this -> myList = new EncounterList(500, 1/2.0, exp (-4), Time(NanoSeconds(200000000)));//we should test this data
+  this -> myList = new EncounterList(nodesize_global, 1/2.0, exp (-4), Time(NanoSeconds(200000000)));//we should test this data
 }
 
 Ptr<Socket>
@@ -516,8 +519,10 @@ MyReceiver::ReceivePacket (Ptr<Socket> socket)
         {    
           NS_LOG_UNCOND ("want to calculate the score"); 
           Time time = Now();
-          uint32_t max_recvID = myList -> calculateMaxScore(500, time);
-          this -> Forward (max_recvID, packetType.GetData(), nodeID.GetData());
+          std::vector<uint32_t> bunch_of_recvID = myList -> calculateMaxScore(nodesize_global, time, threshold_global);
+          for (int i = 0; i < (int) bunch_of_recvID.size(); i++) {
+            this -> Forward (bunch_of_recvID[(uint32_t)i], packetType.GetData(), nodeID.GetData());
+          }
         }
       }
      
