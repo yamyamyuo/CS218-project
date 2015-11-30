@@ -78,6 +78,9 @@ using namespace ns3;
 
 int nodesize_global = 50;
 double threshold_global = 1.0;
+double maliRatio = 0.1;
+std::vector<bool> maliciousVector(nodesize_global, false);
+
 //the encounter list classes define
 class EncounterTuple : public Object
 {
@@ -353,6 +356,8 @@ public:
   void Forward (uint16_t recvID, uint16_t pktT, uint16_t key);
   Ptr<Node> GetNode ();
   uint16_t GetCurrKeyNum();
+  void SetMalicious (uint16_t id);
+  bool GetMalicious ();
 private:
   std::vector<uint64_t> messageQ; //integer holds time stamp
   std::vector<uint64_t> keyQ;
@@ -365,6 +370,7 @@ private:
   TypeId mytid;
   uint16_t currentKeyNum;
   EncounterList *myList;
+  bool isMalicious;
 };
 
 MyReceiver::MyReceiver (Ptr<Node> node, TypeId tid)
@@ -392,6 +398,7 @@ MyReceiver::MyReceiver (Ptr<Node> node, TypeId tid)
   this -> fwdSocket -> Connect (remote);
   this -> m_data = "";
   this -> myList = new EncounterList(nodesize_global, 1/2.0, exp (-4), Time(NanoSeconds(200000000)));//we should test this data
+  this -> SetMalicious (this -> mySocket -> GetNode() -> GetId());
 }
 
 Ptr<Socket>
@@ -416,6 +423,21 @@ uint16_t
 MyReceiver::GetCurrKeyNum ()
 {
   return this -> currentKeyNum;
+}
+
+void
+MyReceiver::SetMalicious (uint16_t id) 
+{
+  if (maliciousVector[id] == true)
+    this -> isMalicious = true;
+  else
+    this -> isMalicious = false;
+}
+
+bool
+MyReceiver::GetMalicious ()
+{
+  return this -> isMalicious;
 }
 
 Ptr<Node>
@@ -624,6 +646,17 @@ int main (int argc, char *argv[])
   uint32_t numPackets = 10;
   double interval = 1.0; // seconds
   bool verbose = false;
+  
+  //initialize maliciousVector
+  int maliNumber = maliRatio * nodesize_global;
+  int maliCount = 0;
+  while (maliCount < maliNumber) {
+    int randIdx = rand() % nodesize_global;
+    if (maliciousVector[randIdx] == false) {
+      maliciousVector[randIdx] = true;
+      maliCount++;
+    }
+  }
   //uint32_t users = 250;
 
   CommandLine cmd;
