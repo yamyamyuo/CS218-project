@@ -76,7 +76,7 @@
 
 using namespace ns3;
 
-int nodesize_global = 500;
+int nodesize_global = 50;
 double threshold_global = 1.0;
 //the encounter list classes define
 class EncounterTuple : public Object
@@ -532,7 +532,7 @@ MyReceiver::ReceivePacket (Ptr<Socket> socket)
             Time time = Now();
             std::vector<uint32_t> bunch_of_recvID = myList -> calculateMaxScore(nodesize_global, time, threshold_global);
             for (int i = 0; i < (int) bunch_of_recvID.size(); i++) {
-              this -> Forward (bunch_of_recvID[(uint32_t)i], packetType.GetData(), nodeID.GetData());
+              this -> Forward (bunch_of_recvID[(uint32_t)i], packetType.GetData(), keyNum.GetData());
             }
           }
         }
@@ -624,7 +624,7 @@ int main (int argc, char *argv[])
   uint32_t numPackets = 10;
   double interval = 1.0; // seconds
   bool verbose = false;
-  uint32_t users = 250;
+  //uint32_t users = 250;
 
   CommandLine cmd;
 
@@ -649,7 +649,7 @@ int main (int argc, char *argv[])
 
   NodeContainer c;
         
-  c.Create (users);
+  c.Create (nodesize_global);
 
   // The below set of helpers will help us to put together the wifi NICs we want
   WifiHelper wifi;
@@ -712,8 +712,8 @@ int main (int argc, char *argv[])
   TypeId tid = TypeId::LookupByName ("ns3::UdpSocketFactory");
 
   //routing 
-  std::vector<MyReceiver* > myReceiverSink (users);
-  for (uint32_t n = 0; n < users; n++) {
+  std::vector<MyReceiver* > myReceiverSink (nodesize_global);
+  for (uint32_t n = 0; n < (uint32_t) nodesize_global; n++) {
       MyReceiver *receiver = new MyReceiver (c.Get(n), tid);
       receiver -> Receive (MakeCallback (&MyReceiver::ReceivePacket, receiver));
 Simulator::Schedule (Seconds (0.1), &MyReceiver::SayHello, receiver, numPackets, Seconds (2.0));
