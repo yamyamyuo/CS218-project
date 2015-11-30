@@ -381,6 +381,7 @@ MyReceiver::MyReceiver (Ptr<Node> node, TypeId tid)
   this -> fwdSocket ->SetAllowBroadcast (true);
 
   this -> mySocket -> Connect (remote);
+  this -> currentKeyNum = 0;
   this -> helloSocket -> Connect (remote);
   this -> keyMsgSocket -> Connect (remote);
   this -> fwdSocket -> Connect (remote);
@@ -468,16 +469,6 @@ MyReceiver::ReceivePacket (Ptr<Socket> socket)
       packet -> RemoveHeader(nodeID); //for hello message, this is sender. for key message, this is receiver
       NS_LOG_UNCOND ("id: "<< nodeID.GetData());
       
-      if (packetType.GetData() != (uint16_t) 0)
-      {
-        MyHeader keyNum;
-        packet -> RemoveHeader(keyNum);
-        if (packetType.GetData() != (uint16_t) 1)
-          NS_LOG_UNCOND ("msg: "<< keyNum.GetData());
-        else
-          NS_LOG_UNCOND ("key: "<< keyNum.GetData());
-      }
-
       //when it is hellomsg Store in Encounter list for score calculation
       if (packetType.GetData() == (uint16_t) 0) 
       {
@@ -489,7 +480,12 @@ MyReceiver::ReceivePacket (Ptr<Socket> socket)
       //if not hellomsg and header id is 999 or itself call forward function
       if (packetType.GetData() != (uint16_t) 0)
       {
-          //Chih: check key/msg q
+        MyHeader keyNum;
+        packet -> RemoveHeader(keyNum);
+        if (packetType.GetData() != (uint16_t) 1)
+          NS_LOG_UNCOND ("msg: "<< keyNum.GetData());
+        else
+          NS_LOG_UNCOND ("key: "<< keyNum.GetData());
         Time t = Simulator::Now();
         if (packetType.GetData() == (uint16_t) 1) {
           //case when packet type is message
@@ -499,11 +495,6 @@ MyReceiver::ReceivePacket (Ptr<Socket> socket)
         if (packetType.GetData() == (uint16_t) 2) {
           //case when packet type is key
           //check if key exist
-          for (int i = 0; i < 999; i++) {
-            if (this -> keyQ[i] != 0) {
-              
-            }
-          }
           //update msg q
         }
         //this -> timestmp = t.GetMilliSeconds();
@@ -515,7 +506,7 @@ MyReceiver::ReceivePacket (Ptr<Socket> socket)
           uint16_t max_id = 8;
           //int &max_score = NULL;
           //myList -> calculateMaxScore(500, time, max_id, max_score);
-          this -> Forward (max_id, packetType.GetData(), nodeID.GetData());
+          this -> Forward (max_id, packetType.GetData(), keyNum.GetData());
         }
       }
      
@@ -686,7 +677,7 @@ int main (int argc, char *argv[])
 
   Ipv4AddressHelper ipv4;
   NS_LOG_INFO ("Assign IP Addresses.");
-  ipv4.SetBase ("10.1.1.0", "255.255.255.0");
+  ipv4.SetBase ("10.1.0.0", "255.255.0.0");
   Ipv4InterfaceContainer i = ipv4.Assign (devices);
 
   TypeId tid = TypeId::LookupByName ("ns3::UdpSocketFactory");

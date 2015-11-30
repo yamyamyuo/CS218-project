@@ -142,6 +142,8 @@ EncounterListItem::EncounterListItem(EncounterTuple *tuple)
 {
   curr_data.node_id = tuple -> node_id;
   curr_data.timestamp = tuple -> timestamp;
+  prev = NULL;
+  next = NULL;
 }
 
 EncounterList::EncounterList()
@@ -150,11 +152,11 @@ EncounterList::EncounterList()
 
 EncounterList::EncounterList(int nodeSize, double factor, double lambda, Time validPeriod) 
 {
-  head = NULL;
-  tail = NULL;
-  factor = factor;
-  lambda = lambda;
-  validPeriod = validPeriod;
+  this -> head = NULL;
+  this -> tail = NULL;
+  this -> factor = factor;
+  this -> lambda = lambda;
+  this -> validPeriod = validPeriod;
   //factor = 1 / 2.0;
   //lambda = exp (-4);
   //validPeriod = 20;
@@ -171,7 +173,6 @@ EncounterList::InsertItem(EncounterListItem *current)
   current -> prev = tail;
   tail -> next = current;
   tail = current;
-  current -> next = NULL;
 }
 
 void
@@ -194,12 +195,13 @@ EncounterList::DeleteItem(Time end)
 uint32_t 
 EncounterList::calculateMaxScore(int nodeSize, Time curr_time) 
 {
-  std::vector<uint32_t> trustScore(nodeSize);
-  EncounterListItem *p = head;
-  while (p -> next != NULL )
+  std::vector<double> trustScore(nodeSize);
+  EncounterListItem *p = this -> head;
+  while (p != NULL)
   {
     EncounterTuple curr_tuple = p -> curr_data; 
-    trustScore[curr_tuple.node_id] += pow (factor, lambda * (curr_time.GetSeconds() - curr_tuple.timestamp.GetSeconds()));
+    trustScore[curr_tuple.GetID()] += pow (factor, lambda * (curr_time.GetSeconds() - curr_tuple.timestamp.GetSeconds()));
+    p = p -> next;
   }
   uint32_t max_id = -1;
   uint32_t max_score = 0;
@@ -381,7 +383,6 @@ MyReceiver::MyReceiver (Ptr<Node> node, TypeId tid)
   this -> fwdSocket ->SetAllowBroadcast (true);
 
   this -> mySocket -> Connect (remote);
-  this -> currentKeyNum = 0;
   this -> helloSocket -> Connect (remote);
   this -> keyMsgSocket -> Connect (remote);
   this -> fwdSocket -> Connect (remote);
@@ -469,23 +470,30 @@ MyReceiver::ReceivePacket (Ptr<Socket> socket)
       packet -> RemoveHeader(nodeID); //for hello message, this is sender. for key message, this is receiver
       NS_LOG_UNCOND ("id: "<< nodeID.GetData());
       
+      if (packetType.GetData() != (uint16_t) 0)
+      {
+        MyHeader keyNum;
+        packet -> RemoveHeader(keyNum);
+        if (packetType.GetData() != (uint16_t) 1)
+                ;
+          //NS_LOG_UNCOND ("msg: "<< keyNum.GetData());
+        else
+                ;
+          //NS_LOG_UNCOND ("key: "<< keyNum.GetData());
+      }
+
       //when it is hellomsg Store in Encounter list for score calculation
       if (packetType.GetData() == (uint16_t) 0) 
       {
         Time timestamp = Now();
-        EncounterTuple *newTuple = new EncounterTuple(packetType.GetData(), timestamp);
+        EncounterTuple *newTuple = new EncounterTuple(nodeID.GetData(), timestamp);
         EncounterListItem *listItem = new EncounterListItem(newTuple);
         myList -> InsertItem(listItem);
       }
       //if not hellomsg and header id is 999 or itself call forward function
       if (packetType.GetData() != (uint16_t) 0)
       {
-        MyHeader keyNum;
-        packet -> RemoveHeader(keyNum);
-        if (packetType.GetData() != (uint16_t) 1)
-          NS_LOG_UNCOND ("msg: "<< keyNum.GetData());
-        else
-          NS_LOG_UNCOND ("key: "<< keyNum.GetData());
+          //Chih: check key/msg q
         Time t = Simulator::Now();
         if (packetType.GetData() == (uint16_t) 1) {
           //case when packet type is message
@@ -495,18 +503,21 @@ MyReceiver::ReceivePacket (Ptr<Socket> socket)
         if (packetType.GetData() == (uint16_t) 2) {
           //case when packet type is key
           //check if key exist
+          for (int i = 0; i < 999; i++) {
+            if (this -> keyQ[i] != 0) {
+              
+            }
+          }
           //update msg q
         }
         //this -> timestmp = t.GetMilliSeconds();
         if (nodeID.GetData() == (uint16_t) 999 || 
             nodeID.GetData() == this -> mySocket ->GetNode () -> GetId ())
-        {     
-          //Pseudo code to monitor the max score. 
-          //Time time = Now();
-          uint16_t max_id = 8;
-          //int &max_score = NULL;
-          //myList -> calculateMaxScore(500, time, max_id, max_score);
-          this -> Forward (max_id, packetType.GetData(), keyNum.GetData());
+        {    
+          NS_LOG_UNCOND ("want to calculate the score"); 
+          Time time = Now();
+          uint32_t max_recvID = myList -> calculateMaxScore(500, time);
+          this -> Forward (max_recvID, packetType.GetData(), nodeID.GetData());
         }
       }
      
@@ -576,6 +587,7 @@ void MyReceiver::SayKey(uint32_t pktCount, Time interval, uint16_t recvID)
 
 void MyReceiver::Forward (uint16_t recvID, uint16_t pktT, uint16_t key) 
 {
+  NS_LOG_UNCOND ("forward to" << recvID);
   MyHeader rcv, pktType, keyNum;
   rcv.SetData(recvID);
   pktType.SetData(pktT);
@@ -677,7 +689,7 @@ int main (int argc, char *argv[])
 
   Ipv4AddressHelper ipv4;
   NS_LOG_INFO ("Assign IP Addresses.");
-  ipv4.SetBase ("10.1.0.0", "255.255.0.0");
+  ipv4.SetBase ("10.1.1.0", "255.255.255.0");
   Ipv4InterfaceContainer i = ipv4.Assign (devices);
 
   TypeId tid = TypeId::LookupByName ("ns3::UdpSocketFactory");
@@ -692,7 +704,7 @@ Simulator::Schedule (Seconds (0.1), &MyReceiver::SayHello, receiver, numPackets,
       myReceiverSink.at(n) = receiver;
   }
 
-MyReceiver* source = myReceiverSink.at(2);
+MyReceiver* source = myReceiverSink.at(9);
 Simulator::Schedule (Seconds (0.5), &MyReceiver::SayMessage, source, numPackets, Seconds (2.0), (uint16_t) 999);
 Simulator::Schedule (Seconds (1.5), &MyReceiver::SayKey, source, numPackets, Seconds (2.0), (uint16_t) 999);
 // Simulator::ScheduleWithContext (source->GetNode ()->GetId (),
