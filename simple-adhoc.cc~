@@ -77,6 +77,7 @@
 using namespace ns3;
 
 int nodesize_global = 500;
+double threshold_global = 1.0;
 //the encounter list classes define
 class EncounterTuple : public Object
 {
@@ -203,14 +204,14 @@ EncounterList::calculateMaxScore(int nodeSize, Time curr_time, double threshold)
     EncounterTuple curr_tuple = p -> curr_data; 
     trustScore[curr_tuple.GetID()] += pow (factor, lambda * (curr_time.GetSeconds() - curr_tuple.timestamp.GetSeconds()));
     p = p -> next;
+    NS_LOG_UNCOND (curr_tuple.GetID());
+    NS_LOG_UNCOND (trustScore[curr_tuple.GetID()]);
   }
-  //uint32_t max_id = -1;
- // uint32_t max_score = 0;
 
-  std::vector<uint32_t> bunch_of_nodeID();
+  std::vector<uint32_t> bunch_of_nodeID;
   for (int i = 0 ; i < nodeSize ; i++) {
     if (trustScore[i] > threshold) {
-      bunch_of_nodeID.push_back(i);
+      bunch_of_nodeID.push_back((uint32_t) i);
     }
   }
   return bunch_of_nodeID;
@@ -368,6 +369,7 @@ private:
 
 MyReceiver::MyReceiver (Ptr<Node> node, TypeId tid)
 {
+  this -> currentKeyNum = 1;
   this -> messageQ.resize(999, 0);
   this -> keyQ.resize(999, 0);
   this -> myNode = node;
@@ -464,26 +466,13 @@ MyReceiver::ReceivePacket (Ptr<Socket> socket)
   Ptr<Packet> packet;
   while ( packet = socket->Recv ())
     {
-
-      packet->Print(std::cout);
+      //packet->Print(std::cout);
       MyHeader nodeID, packetType;
       packet -> RemoveHeader(packetType);
       NS_LOG_UNCOND ("type: "<< packetType.GetData());
       packet -> RemoveHeader(nodeID); //for hello message, this is sender. for key message, this is receiver
       NS_LOG_UNCOND ("id: "<< nodeID.GetData());
       
-      if (packetType.GetData() != (uint16_t) 0)
-      {
-        MyHeader keyNum;
-        packet -> RemoveHeader(keyNum);
-        if (packetType.GetData() != (uint16_t) 1)
-                ;
-          //NS_LOG_UNCOND ("msg: "<< keyNum.GetData());
-        else
-                ;
-          //NS_LOG_UNCOND ("key: "<< keyNum.GetData());
-      }
-
       //when it is hellomsg Store in Encounter list for score calculation
       if (packetType.GetData() == (uint16_t) 0) 
       {
@@ -493,34 +482,58 @@ MyReceiver::ReceivePacket (Ptr<Socket> socket)
         myList -> InsertItem(listItem);
       }
       //if not hellomsg and header id is 999 or itself call forward function
+
       if (packetType.GetData() != (uint16_t) 0)
       {
-          //Chih: check key/msg q
+        MyHeader keyNum;
+        packet -> RemoveHeader(keyNum);
+        if (packetType.GetData() != (uint16_t) 1)
+          NS_LOG_UNCOND ("msg: "<< keyNum.GetData());
+        else
+          NS_LOG_UNCOND ("key: "<< keyNum.GetData());
+
         Time t = Simulator::Now();
+        bool matchFound = false;
         if (packetType.GetData() == (uint16_t) 1) {
-          //case when packet type is message
-          //check if key exist
-          //update msg q
-        }
-        if (packetType.GetData() == (uint16_t) 2) {
-          //case when packet type is key
-          //check if key exist
-          for (int i = 0; i < 999; i++) {
-            if (this -> keyQ[i] != 0) {
-              
+        //if packet type is message
+        //check for matching key in keyQ by index
+        //if matching key does not exist, then add timestamp to keyQ at index (keyNum)
+          if (keyQ.at(keyNum.GetData()) > 0) {
+                //if time expires, then ignore
+            uint64_t currTime = t.GetMilliSeconds();
+            if (currTime - keyQ.at(keyNum.GetData()) <= 1500) {
+              matchFound = true;
+              NS_LOG_UNCOND ("Match Found by: " << this -> mySocket ->GetNode() -> GetId());
             }
           }
-          //update msg q
+          else {
+            keyQ.at(keyNum.GetData()) = t.GetMilliSeconds();
+            NS_LOG_UNCOND ("keyQ: "<<keyQ.at(keyNum.GetData()));
+          }
         }
-        //this -> timestmp = t.GetMilliSeconds();
+        if (packetType.GetData() == (uint16_t) 2) {
+          if (messageQ.at(keyNum.GetData()) > 0) {
+            uint64_t currTime = t.GetMilliSeconds();
+            if (currTime - messageQ.at(keyNum.GetData()) <= 1500) {
+              matchFound = true;
+              NS_LOG_UNCOND ("Match Found by: " << this -> mySocket ->GetNode() -> GetId());
+            }
+          }
+          else {
+            messageQ.at(keyNum.GetData()) = t.GetMilliSeconds();
+            NS_LOG_UNCOND ("messageQ: "<<messageQ.at(keyNum.GetData()));
+          }
+        }
         if (nodeID.GetData() == (uint16_t) 999 || 
             nodeID.GetData() == this -> mySocket ->GetNode () -> GetId ())
         {    
-          NS_LOG_UNCOND ("want to calculate the score"); 
-          Time time = Now();
-          std::vector<uint32_t> bunch_of_recvID = myList -> calculateMaxScore(nodesize_global, time, 10);
-          for (int i = 0; i < bunch_of_recvID.size(); i++) {
-            this -> Forward (bunch_of_recvID[i], packetType.GetData(), nodeID.GetData());
+          if (!matchFound) {
+            //NS_LOG_UNCOND ("want to calculate the score"); 
+            Time time = Now();
+            std::vector<uint32_t> bunch_of_recvID = myList -> calculateMaxScore(nodesize_global, time, threshold_global);
+            for (int i = 0; i < (int) bunch_of_recvID.size(); i++) {
+              this -> Forward (bunch_of_recvID[(uint32_t)i], packetType.GetData(), nodeID.GetData());
+            }
           }
         }
       }
@@ -611,7 +624,7 @@ int main (int argc, char *argv[])
   uint32_t numPackets = 10;
   double interval = 1.0; // seconds
   bool verbose = false;
-  uint32_t users = 10;
+  uint32_t users = 250;
 
   CommandLine cmd;
 
@@ -657,7 +670,7 @@ int main (int argc, char *argv[])
   wifiChannel.SetPropagationDelay ("ns3::ConstantSpeedPropagationDelayModel");
   // The below FixedRssLossModel will cause the rss to be fixed regardless
   // of the distance between the two stations, and the transmit power
-   wifiChannel.AddPropagationLoss ("ns3::RangePropagationLossModel","MaxRange",DoubleValue (10));
+   wifiChannel.AddPropagationLoss ("ns3::RangePropagationLossModel","MaxRange",DoubleValue (5.0));
   wifiPhy.SetChannel (wifiChannel.Create ());
 
   // Add a non-QoS upper mac, and disable rate control
@@ -683,9 +696,9 @@ int main (int argc, char *argv[])
   "Rho", StringValue ("ns3::UniformRandomVariable[Min=0|Max=30]"));
 
   mobility.SetMobilityModel ("ns3::RandomWalk2dMobilityModel",
-                             "Bounds", RectangleValue (Rectangle (-100, 100, -100, 100)),
+                             "Bounds", RectangleValue (Rectangle (-300, 300, -300, 300)),
                              "Distance", DoubleValue (1.0),
-                             "Speed", StringValue ("ns3::ConstantRandomVariable[Constant=10.0]"));
+                             "Speed", StringValue ("ns3::ConstantRandomVariable[Constant=100.0]"));
   mobility.Install (c);
 
   InternetStackHelper internet;
@@ -693,7 +706,7 @@ int main (int argc, char *argv[])
 
   Ipv4AddressHelper ipv4;
   NS_LOG_INFO ("Assign IP Addresses.");
-  ipv4.SetBase ("10.1.1.0", "255.255.255.0");
+  ipv4.SetBase ("10.1.0.0", "255.255.0.0");
   Ipv4InterfaceContainer i = ipv4.Assign (devices);
 
   TypeId tid = TypeId::LookupByName ("ns3::UdpSocketFactory");
@@ -709,13 +722,13 @@ Simulator::Schedule (Seconds (0.1), &MyReceiver::SayHello, receiver, numPackets,
   }
 
 MyReceiver* source = myReceiverSink.at(9);
-Simulator::Schedule (Seconds (0.5), &MyReceiver::SayMessage, source, numPackets, Seconds (2.0), (uint16_t) 999);
-Simulator::Schedule (Seconds (1.5), &MyReceiver::SayKey, source, numPackets, Seconds (2.0), (uint16_t) 999);
+Simulator::Schedule (Seconds (0.5), &MyReceiver::SayMessage, source, numPackets, Seconds (5.0), (uint16_t) 999);
+Simulator::Schedule (Seconds (5.5), &MyReceiver::SayKey, source, numPackets, Seconds (5.0), (uint16_t) 999);
 // Simulator::ScheduleWithContext (source->GetNode ()->GetId (),
  //                                 Seconds (1.0), &MyReceiver::SayMessage, 
    //                               source, numPackets, Seconds (2.0));
 
-  Simulator::Stop (Seconds (25.0));
+  Simulator::Stop (Seconds (15.0));
   AnimationInterface anim ("simple-adhoc.xml");
   Simulator::Run ();
   Simulator::Destroy ();
