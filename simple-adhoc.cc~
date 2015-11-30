@@ -79,7 +79,9 @@ using namespace ns3;
 int nodesize_global = 50;
 double threshold_global = 1.0;
 double maliRatio = 0.1;
+int messageCount = 99;
 std::vector<bool> maliciousVector(nodesize_global, false);
+std::vector<uint64_t> messageSendTime(messageCount, Seconds(0.0).GetMilliSeconds());
 
 //the encounter list classes define
 class EncounterTuple : public Object
@@ -598,6 +600,10 @@ void MyReceiver::SayMessage (uint32_t pktCount, Time interval, uint16_t recvID)
   encMsg -> AddHeader(idHeader);
   encMsg -> AddHeader(packetType);
   this -> Send (encMsg, this -> keyMsgSocket);
+  //record the message sending time
+  if (messageSendTime[currentKeyNum] == 0.0)
+    messageSendTime[currentKeyNum] = Simulator::Now().GetMilliSeconds();
+
   EventId sendEvent;
   sendEvent = Simulator::Schedule (interval, &MyReceiver::SayMessage, this, pktCount-1, interval, recvID);
   //sendEvent = Simulator::Schedule (pktInterval, &MyReceiver::SayHello, this, pktCount-1, pktInterval);
@@ -657,6 +663,7 @@ int main (int argc, char *argv[])
       maliCount++;
     }
   }
+
   //uint32_t users = 250;
 
   CommandLine cmd;
@@ -755,8 +762,8 @@ Simulator::Schedule (Seconds (0.1), &MyReceiver::SayHello, receiver, numPackets,
   }
 
 MyReceiver* source = myReceiverSink.at(9);
-Simulator::Schedule (Seconds (0.5), &MyReceiver::SayMessage, source, numPackets, Seconds (5.0), (uint16_t) 999);
-Simulator::Schedule (Seconds (5.5), &MyReceiver::SayKey, source, numPackets, Seconds (5.0), (uint16_t) 999);
+Simulator::Schedule (Seconds (0.5), &MyReceiver::SayMessage, source, numPackets, Seconds (2.0), (uint16_t) 999);
+Simulator::Schedule (Seconds (1.5), &MyReceiver::SayKey, source, numPackets, Seconds (2.0), (uint16_t) 999);
 // Simulator::ScheduleWithContext (source->GetNode ()->GetId (),
  //                                 Seconds (1.0), &MyReceiver::SayMessage, 
    //                               source, numPackets, Seconds (2.0));
@@ -765,6 +772,11 @@ Simulator::Schedule (Seconds (5.5), &MyReceiver::SayKey, source, numPackets, Sec
   AnimationInterface anim ("simple-adhoc.xml");
   Simulator::Run ();
   Simulator::Destroy ();
+ 
+  for (int i = 0 ; i < 10 ; i++) {
+  std::cout << messageSendTime[i];  
+  std::cout << ",";
+  }
 
   return 0;
 }

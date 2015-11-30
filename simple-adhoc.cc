@@ -644,15 +644,33 @@ void MyReceiver::Forward (uint16_t recvID, uint16_t pktT, uint16_t key)
   this -> Send (msg, this -> fwdSocket);
 }
 
+//  ./waf --run "scratch/simple-adhoc --nPackets=2"
 int main (int argc, char *argv[])
 {
+  std::cout<< "input arguments in the following sequence, number of nodes, node density, nodes speed, malicious node percentage, message count, broadcast threshold, source moving delay" << std::endl;
+  //input arguments in the following sequence, number of nodes, node density, nodes speed, malicious node percentage, message count, broadcast threshold, source moving delay
+  int nodeDensity = 5;
+  int nodeSpeed = 5;
+  int movingDelay = 10;
+  CommandLine cmd;
+  cmd.AddValue ("nodesize", "number of nodes", nodesize_global);
+  cmd.AddValue ("nodeDensity", "density of the network", nodeDensity);
+  cmd.AddValue ("nodeSpeed", "density of the network", nodeSpeed);
+  cmd.AddValue ("maliRatio", "percentage of malicious nodes", maliRatio);
+  cmd.AddValue ("messageCount", "total number of message the source node sends", messageCount);
+  cmd.AddValue ("threshold", "threshold for every node to broadcast", threshold_global);
+  cmd.AddValue ("delay", "the time period between sending message and key", movingDelay);
+  cmd.Parse (argc, argv);
+
+
+  //arguments for packets
   std::string phyMode ("DsssRate1Mbps");
-  double rss = -80;  // -dBm
-  uint32_t packetSize = 1000; // bytes
+  //double rss = -80;  // -dBm
+  //uint32_t packetSize = 1000; // bytes
   uint32_t numPackets = 10;
   double interval = 1.0; // seconds
   bool verbose = false;
-  
+ 
   //initialize maliciousVector
   int maliNumber = maliRatio * nodesize_global;
   int maliCount = 0;
@@ -663,7 +681,7 @@ int main (int argc, char *argv[])
       maliCount++;
     }
   }
-
+/*
   //uint32_t users = 250;
 
   CommandLine cmd;
@@ -676,7 +694,8 @@ int main (int argc, char *argv[])
   cmd.AddValue ("verbose", "turn on all WifiNetDevice log components", verbose);
 
   cmd.Parse (argc, argv);
-  // Convert to time object
+*/ 
+ // Convert to time object
   Time interPacketInterval = Seconds (interval);
 
   // disable fragmentation for frames below 2200 bytes
@@ -773,10 +792,6 @@ Simulator::Schedule (Seconds (1.5), &MyReceiver::SayKey, source, numPackets, Sec
   Simulator::Run ();
   Simulator::Destroy ();
  
-  for (int i = 0 ; i < 10 ; i++) {
-  std::cout << messageSendTime[i];  
-  std::cout << ",";
-  }
 
   return 0;
 }
