@@ -210,8 +210,8 @@ EncounterList::calculateMaxScore(int nodeSize, Time curr_time, double threshold)
     EncounterTuple curr_tuple = p -> curr_data; 
     trustScore[curr_tuple.GetID()] += pow (factor, lambda * (curr_time.GetSeconds() - curr_tuple.timestamp.GetSeconds()));
     p = p -> next;
-    //NS_LOG_UNCOND (curr_tuple.GetID());
-    //NS_LOG_UNCOND (trustScore[curr_tuple.GetID()]);
+    NS_LOG_UNCOND (curr_tuple.GetID());
+    NS_LOG_UNCOND (trustScore[curr_tuple.GetID()]);
   }
 
   std::vector<uint32_t> bunch_of_nodeID;
@@ -470,9 +470,9 @@ MyReceiver::ReceivePacket (Ptr<Socket> socket)
       //packet->Print(std::cout);
       MyHeader nodeID, packetType;
       packet -> RemoveHeader(packetType);
-      //NS_LOG_UNCOND ("type: "<< packetType.GetData());
+      NS_LOG_UNCOND ("type: "<< packetType.GetData());
       packet -> RemoveHeader(nodeID); //for hello message, this is sender. for key message, this is receiver
-      //NS_LOG_UNCOND ("id: "<< nodeID.GetData());
+      NS_LOG_UNCOND ("id: "<< nodeID.GetData());
       
       //when it is hellomsg Store in Encounter list for score calculation
       if (packetType.GetData() == (uint16_t) 0) 
@@ -506,12 +506,12 @@ MyReceiver::ReceivePacket (Ptr<Socket> socket)
               else {
                 g_decodeQ.at(keyNum.GetData()) = 2;
               }
-              //NS_LOG_UNCOND ("Match Found by: " << this -> mySocket ->GetNode() -> GetId());
+              NS_LOG_UNCOND ("Match Found by: " << this -> mySocket ->GetNode() -> GetId());
             }
           }
           else {
             messageQ.at(keyNum.GetData()) = t.GetMilliSeconds();
-            //NS_LOG_UNCOND ("messageQ: "<<messageQ.at(keyNum.GetData()));
+            NS_LOG_UNCOND ("messageQ: "<<messageQ.at(keyNum.GetData()));
           }
         }
         if (packetType.GetData() == (uint16_t) 2) {
@@ -526,19 +526,19 @@ MyReceiver::ReceivePacket (Ptr<Socket> socket)
               else {
                 g_decodeQ.at(keyNum.GetData()) = 2;
               }
-              //NS_LOG_UNCOND ("Match Found by: " << this -> mySocket ->GetNode() -> GetId());
+              NS_LOG_UNCOND ("Match Found by: " << this -> mySocket ->GetNode() -> GetId());
             }
           }
           else {
             keyQ.at(keyNum.GetData()) = t.GetMilliSeconds();
-            //NS_LOG_UNCOND ("keyQ: "<<keyQ.at(keyNum.GetData()));
+            NS_LOG_UNCOND ("keyQ: "<<keyQ.at(keyNum.GetData()));
           }
         }
         if (nodeID.GetData() == (uint16_t) 999 || 
             nodeID.GetData() == this -> mySocket ->GetNode () -> GetId ())
         {    
           if (!matchFound && !decodeQ.at(keyNum.GetData())) {
-            ////NS_LOG_UNCOND ("want to calculate the score"); 
+            //NS_LOG_UNCOND ("want to calculate the score"); 
             Time time = Now();
             std::vector<uint32_t> bunch_of_recvID = myList -> calculateMaxScore(nodesize_global, time, threshold_global);
             for (int i = 0; i < (int) bunch_of_recvID.size(); i++) {
@@ -570,7 +570,7 @@ void MyReceiver::SayHello (uint32_t pktCount, Time interval)
   this -> Send (helloMsg, this -> helloSocket);
   EventId sendEvent;
   sendEvent = Simulator::Schedule (interval, &MyReceiver::SayHello, this, pktCount-1, interval);
-  ////NS_LOG_UNCOND (sendEvent.GetTs());
+  //NS_LOG_UNCOND (sendEvent.GetTs());
 }
 
 void MyReceiver::SayMessage (uint32_t pktCount, Time interval, uint16_t recvID)
@@ -593,7 +593,7 @@ void MyReceiver::SayMessage (uint32_t pktCount, Time interval, uint16_t recvID)
   EventId sendEvent;
   sendEvent = Simulator::Schedule (interval, &MyReceiver::SayMessage, this, pktCount-1, interval, recvID);
   //sendEvent = Simulator::Schedule (pktInterval, &MyReceiver::SayHello, this, pktCount-1, pktInterval);
-  //NS_LOG_UNCOND (sendEvent.GetTs());
+  NS_LOG_UNCOND (sendEvent.GetTs());
 }
 
 void MyReceiver::SayKey(uint32_t pktCount, Time interval, uint16_t recvID)
@@ -613,12 +613,12 @@ void MyReceiver::SayKey(uint32_t pktCount, Time interval, uint16_t recvID)
 
   EventId sendEvent;
   sendEvent = Simulator::Schedule (interval, &MyReceiver::SayKey, this, pktCount-1, interval, recvID);
-  ////NS_LOG_UNCOND (sendEvent.GetTs());
+  //NS_LOG_UNCOND (sendEvent.GetTs());
 }
 
 void MyReceiver::Forward (uint16_t recvID, uint16_t pktT, uint16_t key) 
 {
-  //NS_LOG_UNCOND ("forward to" << recvID);
+  NS_LOG_UNCOND ("forward to" << recvID);
   MyHeader rcv, pktType, keyNum;
   rcv.SetData(recvID);
   pktType.SetData(pktT);
@@ -640,7 +640,7 @@ int main (int argc, char *argv[])
   CommandLine cmd;
   cmd.AddValue ("nodesize", "number of nodes", nodesize_global);
   cmd.AddValue ("nodeDensity", "density of the network", nodeDensity);
-  cmd.AddValue ("nodeSpeed", "density of the network", nodeSpeed);
+  cmd.AddValue ("nodeSpeed", "speed of each node", nodeSpeed);
   cmd.AddValue ("maliRatio", "percentage of malicious nodes", maliRatio);
   cmd.AddValue ("messageCount", "total number of message the source node sends", messageCount);
   cmd.AddValue ("threshold", "threshold for every node to broadcast", threshold_global);
@@ -650,10 +650,7 @@ int main (int argc, char *argv[])
 
   //arguments for packets
   std::string phyMode ("DsssRate1Mbps");
-  double rss = -80;  // -dBm
-  uint32_t packetSize = 1000; // bytes
   uint32_t numPackets = 10;
-  double interval = 1.0; // seconds
   bool verbose = false;
   
   //initialize maliciousVector
@@ -668,7 +665,7 @@ int main (int argc, char *argv[])
   }
 
   // Convert to time object
-  Time interPacketInterval = Seconds (interval);
+  Time interPacketInterval = Seconds (movingDelay);
 
   // disable fragmentation for frames below 2200 bytes
   Config::SetDefault ("ns3::WifiRemoteStationManager::FragmentationThreshold", StringValue ("2200"));
@@ -701,7 +698,7 @@ int main (int argc, char *argv[])
   wifiChannel.SetPropagationDelay ("ns3::ConstantSpeedPropagationDelayModel");
   // The below FixedRssLossModel will cause the rss to be fixed regardless
   // of the distance between the two stations, and the transmit power
-   wifiChannel.AddPropagationLoss ("ns3::RangePropagationLossModel","MaxRange",DoubleValue (5.0));
+   wifiChannel.AddPropagationLoss ("ns3::RangePropagationLossModel","MaxRange",DoubleValue (10.0));
   wifiPhy.SetChannel (wifiChannel.Create ());
 
   // Add a non-QoS upper mac, and disable rate control
