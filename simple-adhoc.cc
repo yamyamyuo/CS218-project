@@ -78,13 +78,14 @@ using namespace ns3;
 
 int nodesize_global = 50;
 double threshold_global = 1.0;
-double maliRatio = 0.1;
+double maliRatio = 0.5;
 int messageCount = 99;
 std::vector<bool> maliciousVector(nodesize_global, false);
 int gTotalSent = 0; //global send q
 std::vector<int> m_decodeQ; //malicious decode q
 std::vector<int> g_decodeQ; //good decode q
 std::vector<uint64_t> messageSendTime(messageCount, Seconds(0.0).GetMilliSeconds());
+std::vector<uint64_t> messageReceivedTime(messageCount, 0);
 
 //the encounter list classes define
 class EncounterTuple : public Object
@@ -502,20 +503,20 @@ MyReceiver::ReceivePacket (Ptr<Socket> socket)
             if (currTime - keyQ.at(keyNum.GetData()) <= 1500) {
               matchFound = true;
               decodeQ.at(keyNum.GetData()) = true;
+              if (messageReceivedTime.at(keyNum.GetData()) == (uint64_t) 0) {
+                messageReceivedTime.at(keyNum.GetData()) = currTime;
+                NS_LOG_UNCOND ("Message Received Time"<<messageReceivedTime.at(keyNum.GetData()));
+              }
               if (this -> isMalicious) {
                 if (std::find(m_decodeQ.begin(), m_decodeQ.end(), keyNum.GetData()) == m_decodeQ.end()) {
-                  // someName not in name, add it
                   m_decodeQ.push_back(keyNum.GetData());
                 }
-//                m_decodeQ.at(keyNum.GetData()) = 1;
                 NS_LOG_UNCOND ("Matched by Mal");
               }
               else {
                 if (std::find(g_decodeQ.begin(), g_decodeQ.end(), keyNum.GetData()) == g_decodeQ.end()) {
-                  // someName not in name, add it
                   g_decodeQ.push_back(keyNum.GetData());
                 }
-                //g_decodeQ.at(keyNum.GetData()) = 2;
               }
               NS_LOG_UNCOND ("Match Found by: " << this -> mySocket ->GetNode() -> GetId());
               NS_LOG_UNCOND ("Match Key Num: " <<keyNum.GetData());
@@ -532,6 +533,10 @@ MyReceiver::ReceivePacket (Ptr<Socket> socket)
             if (currTime - messageQ.at(keyNum.GetData()) <= 1500) {
               matchFound = true;
               decodeQ.at(keyNum.GetData()) = true;
+              if (messageReceivedTime.at(keyNum.GetData()) == (uint64_t) 0) {
+                messageReceivedTime.at(keyNum.GetData()) = currTime;
+                NS_LOG_UNCOND ("Message Received Time "<<messageReceivedTime.at(keyNum.GetData()));
+              }
               if (this -> isMalicious) {
                 if (std::find(m_decodeQ.begin(), m_decodeQ.end(), keyNum.GetData()) == m_decodeQ.end()) {
                   // someName not in name, add it
@@ -547,7 +552,7 @@ MyReceiver::ReceivePacket (Ptr<Socket> socket)
                 }
                 //g_decodeQ.at(keyNum.GetData()) = 2;
               }
-              NS_LOG_UNCOND ("Match Found by: " << this -> mySocket ->GetNode() -> GetId());
+              //NS_LOG_UNCOND ("Match Found by: " << this -> mySocket ->GetNode() -> GetId());
               NS_LOG_UNCOND ("Match Key Num: " <<keyNum.GetData());
             }
           }
@@ -657,17 +662,19 @@ int main (int argc, char *argv[])
 {
   std::cout<< "input arguments in the following sequence, number of nodes, node density, nodes speed, malicious node percentage, message count, broadcast threshold, source moving delay" << std::endl;
   //input arguments in the following sequence, number of nodes, node density, nodes speed, malicious node percentage, message count, broadcast threshold, source moving delay
-  int nodeDensity = 5;
-  int nodeSpeed = 5;
-  int movingDelay = 10;
+  int nodeSparseness = 30;
+  int nodeTravel = 300;
+  int nodeSpeed = 100.0;
+  int movingDelay = 5;
   CommandLine cmd;
-  cmd.AddValue ("nodesize", "number of nodes", nodesize_global);
-  cmd.AddValue ("nodeDensity", "density of the network", nodeDensity);
-  cmd.AddValue ("nodeSpeed", "speed of each node", nodeSpeed);
-  cmd.AddValue ("maliRatio", "percentage of malicious nodes", maliRatio);
-  cmd.AddValue ("messageCount", "total number of message the source node sends", messageCount);
-  cmd.AddValue ("threshold", "threshold for every node to broadcast", threshold_global);
-  cmd.AddValue ("delay", "the time period between sending message and key", movingDelay);
+  cmd.AddValue ("nodesize", "number of nodes (default 50)", nodesize_global);
+  cmd.AddValue ("nodeSparseness", "density of the network (default 30)", nodeSparseness);
+  cmd.AddValue ("nodeTravel", "how far a node will travel (default 300)", nodeTravel);
+  cmd.AddValue ("nodeSpeed", "speed of each node (default 100.0)", nodeSpeed);
+  cmd.AddValue ("maliRatio", "percentage of malicious nodes (default 0.5)", maliRatio);
+//  cmd.AddValue ("messageCount", "total number of message the source node sends", messageCount);
+  cmd.AddValue ("threshold", "threshold for every node to broadcast (default 1.0)", threshold_global);
+  cmd.AddValue ("delay", "the time period between sending message and key (default 5)", movingDelay);
   cmd.Parse (argc, argv);
 
 
@@ -740,16 +747,19 @@ int main (int argc, char *argv[])
   positionAlloc->Add (Vector (0.0, 0.0, 0.0));
   positionAlloc->Add (Vector (5.0, 0.0, 0.0));
   //mobility.SetPositionAllocator (positionAlloc);
-
+  char rho[50];
+  sprintf(rho, "ns3::UniformRandomVariable[Min=0|Max=%d]",nodeSparseness);
+  
   mobility.SetPositionAllocator ("ns3::RandomDiscPositionAllocator",
-  "X", StringValue ("10.0"),
-  "Y", StringValue ("10.0"),
-  "Rho", StringValue ("ns3::UniformRandomVariable[Min=0|Max=30]"));
-
+  "X", StringValue ("100.0"),
+  "Y", StringValue ("100.0"),
+  "Rho", StringValue (rho));
+  char speed[45];
+  sprintf(speed, "ns3::ConstantRandomVariable[Constant=%d]",nodeSpeed);
   mobility.SetMobilityModel ("ns3::RandomWalk2dMobilityModel",
-                             "Bounds", RectangleValue (Rectangle (-300, 300, -300, 300)),
+                             "Bounds", RectangleValue (Rectangle (0-nodeTravel, nodeTravel, 0-nodeTravel, nodeTravel)),
                              "Distance", DoubleValue (1.0),
-                             "Speed", StringValue ("ns3::ConstantRandomVariable[Constant=100.0]"));
+                             "Speed", StringValue (speed));
   mobility.Install (c);
 
   InternetStackHelper internet;
@@ -773,8 +783,8 @@ Simulator::Schedule (Seconds (0.1), &MyReceiver::SayHello, receiver, numPackets,
   }
 
 MyReceiver* source = myReceiverSink.at(9);
-Simulator::Schedule (Seconds (0.5), &MyReceiver::SayMessage, source, numPackets, Seconds (2.0), (uint16_t) 999);
-Simulator::Schedule (Seconds (5.5), &MyReceiver::SayKey, source, numPackets, Seconds (2.0), (uint16_t) 999);
+Simulator::Schedule (Seconds (0.321), &MyReceiver::SayMessage, source, numPackets, Seconds (2.0), (uint16_t) 999);
+Simulator::Schedule (Seconds (movingDelay), &MyReceiver::SayKey, source, numPackets, Seconds (2.0), (uint16_t) 999);
 // Simulator::ScheduleWithContext (source->GetNode ()->GetId (),
  //                                 Seconds (1.0), &MyReceiver::SayMessage, 
    //                               source, numPackets, Seconds (2.0));
@@ -787,6 +797,26 @@ Simulator::Schedule (Seconds (5.5), &MyReceiver::SayKey, source, numPackets, Sec
   
   Simulator::Run ();
   Simulator::Destroy ();
-  NS_LOG_UNCOND (gTotalSent);
+//calculate total decoded, total malicious decoded, average delay time
+  double totalDecoded = 0.0;
+  for(int i = 0; i < (int)m_decodeQ.size(); i++) {
+    totalDecoded++;
+  }
+  for(int i = 0; i < (int)g_decodeQ.size(); i++) {
+    totalDecoded++;
+  }
+  NS_LOG_UNCOND ("Total Number of Messages Sent: "<<gTotalSent);
+  NS_LOG_UNCOND ("Total Number of Messages Decoded: "<<totalDecoded);
+  NS_LOG_UNCOND ("Total Number of Messages Decoded by Malicious: "<<m_decodeQ.size());
+
+//calculate average message delay time
+  uint64_t totalDiff = 0;
+  for (int i = 0; i < (int)messageReceivedTime.size(); i++) {
+    if (messageReceivedTime.at(i) > 0) {
+      totalDiff += messageReceivedTime.at(i) - messageSendTime.at(i);
+    }
+  }
+  double avgDelayTime = totalDiff/(double)messageReceivedTime.size();
+  NS_LOG_UNCOND ("Average Message Delay in milliseconds: "<<avgDelayTime);
   return 0;
 }
