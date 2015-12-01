@@ -81,6 +81,7 @@ double threshold_global = 1.0;
 double maliRatio = 0.1;
 int messageCount = 99;
 std::vector<bool> maliciousVector(nodesize_global, false);
+std::vector<int> g_decodeQ(messageCount, 0);
 std::vector<uint64_t> messageSendTime(messageCount, Seconds(0.0).GetMilliSeconds());
 
 //the encounter list classes define
@@ -304,32 +305,6 @@ MyHeader::GetData (void) const
   return m_data;
 }
 
-/******
-*
-* QItem used to maintain a queue|vector of unmatched keys and messages
-*
-******/
-class QItem
-{
-public:
-QItem(uint16_t pkt, uint16_t key);
-uint16_t GetPktType ();
-uint16_t GetKeyNum ();
-uint64_t GetTimestmp ();
-private:
-  uint16_t pktType;
-  uint16_t keyNum;
-  uint64_t timestmp;
-};
-
-QItem::QItem(uint16_t pkt, uint16_t key)
-{
-  this -> pktType = pkt;
-  this -> keyNum = key;
-  Time t = Simulator::Now();
-  this -> timestmp = t.GetMilliSeconds();
-}
-
 /*****
 *
 * MyReceiver is the wrapper for each node. This class contains the routing protocol. 
@@ -363,6 +338,7 @@ public:
 private:
   std::vector<uint64_t> messageQ; //integer holds time stamp
   std::vector<uint64_t> keyQ;
+  std::vector<bool> decodeQ;
   std::string m_data;
   Ptr<Socket> mySocket;
   Ptr<Socket> helloSocket;
@@ -378,8 +354,9 @@ private:
 MyReceiver::MyReceiver (Ptr<Node> node, TypeId tid)
 {
   this -> currentKeyNum = 1;
-  this -> messageQ.resize(999, 0);
-  this -> keyQ.resize(999, 0);
+  this -> messageQ.resize(messageCount, 0);
+  this -> keyQ.resize(messageCount, 0);
+  this -> decodeQ.resize(messageCount, false);
   this -> myNode = node;
   this -> mytid = tid;
   this -> mySocket = Socket::CreateSocket (node, tid);
@@ -511,10 +488,6 @@ MyReceiver::ReceivePacket (Ptr<Socket> socket)
       {
         MyHeader keyNum;
         packet -> RemoveHeader(keyNum);
-        if (packetType.GetData() != (uint16_t) 1)
-          NS_LOG_UNCOND ("msg: "<< keyNum.GetData());
-        else
-          NS_LOG_UNCOND ("key: "<< keyNum.GetData());
 
         Time t = Simulator::Now();
         bool matchFound = false;
@@ -522,24 +495,17 @@ MyReceiver::ReceivePacket (Ptr<Socket> socket)
         //if packet type is message
         //check for matching key in keyQ by index
         //if matching key does not exist, then add timestamp to keyQ at index (keyNum)
-          if (keyQ.at(keyNum.GetData()) > 0) {
-                //if time expires, then ignore
+          if (keyQ.at(keyNum.GetData()) > 0 && decodeQ.at(keyNum.GetData()) == false) {
             uint64_t currTime = t.GetMilliSeconds();
             if (currTime - keyQ.at(keyNum.GetData()) <= 1500) {
               matchFound = true;
-              NS_LOG_UNCOND ("Match Found by: " << this -> mySocket ->GetNode() -> GetId());
-            }
-          }
-          else {
-            keyQ.at(keyNum.GetData()) = t.GetMilliSeconds();
-            NS_LOG_UNCOND ("keyQ: "<<keyQ.at(keyNum.GetData()));
-          }
-        }
-        if (packetType.GetData() == (uint16_t) 2) {
-          if (messageQ.at(keyNum.GetData()) > 0) {
-            uint64_t currTime = t.GetMilliSeconds();
-            if (currTime - messageQ.at(keyNum.GetData()) <= 1500) {
-              matchFound = true;
+              decodeQ.at(keyNum.GetData()) = true;
+              if (this -> isMalicious) {
+                g_decodeQ.at(keyNum.GetData()) = 1;
+              }
+              else {
+                g_decodeQ.at(keyNum.GetData()) = 2;
+              }
               NS_LOG_UNCOND ("Match Found by: " << this -> mySocket ->GetNode() -> GetId());
             }
           }
@@ -548,10 +514,30 @@ MyReceiver::ReceivePacket (Ptr<Socket> socket)
             NS_LOG_UNCOND ("messageQ: "<<messageQ.at(keyNum.GetData()));
           }
         }
+        if (packetType.GetData() == (uint16_t) 2) {
+          if (messageQ.at(keyNum.GetData()) > 0 && decodeQ.at(keyNum.GetData()) == false) {
+            uint64_t currTime = t.GetMilliSeconds();
+            if (currTime - messageQ.at(keyNum.GetData()) <= 1500) {
+              matchFound = true;
+              decodeQ.at(keyNum.GetData()) = true;
+              if (this -> isMalicious) {
+                g_decodeQ.at(keyNum.GetData()) = 1;
+              }
+              else {
+                g_decodeQ.at(keyNum.GetData()) = 2;
+              }
+              NS_LOG_UNCOND ("Match Found by: " << this -> mySocket ->GetNode() -> GetId());
+            }
+          }
+          else {
+            keyQ.at(keyNum.GetData()) = t.GetMilliSeconds();
+            NS_LOG_UNCOND ("keyQ: "<<keyQ.at(keyNum.GetData()));
+          }
+        }
         if (nodeID.GetData() == (uint16_t) 999 || 
             nodeID.GetData() == this -> mySocket ->GetNode () -> GetId ())
         {    
-          if (!matchFound) {
+          if (!matchFound && !decodeQ.at(keyNum.GetData())) {
             //NS_LOG_UNCOND ("want to calculate the score"); 
             Time time = Now();
             std::vector<uint32_t> bunch_of_recvID = myList -> calculateMaxScore(nodesize_global, time, threshold_global);
@@ -644,7 +630,6 @@ void MyReceiver::Forward (uint16_t recvID, uint16_t pktT, uint16_t key)
   this -> Send (msg, this -> fwdSocket);
 }
 
-//  ./waf --run "scratch/simple-adhoc --nPackets=2"
 int main (int argc, char *argv[])
 {
   std::cout<< "input arguments in the following sequence, number of nodes, node density, nodes speed, malicious node percentage, message count, broadcast threshold, source moving delay" << std::endl;
@@ -655,7 +640,7 @@ int main (int argc, char *argv[])
   CommandLine cmd;
   cmd.AddValue ("nodesize", "number of nodes", nodesize_global);
   cmd.AddValue ("nodeDensity", "density of the network", nodeDensity);
-  cmd.AddValue ("nodeSpeed", "density of the network", nodeSpeed);
+  cmd.AddValue ("nodeSpeed", "speed of each node", nodeSpeed);
   cmd.AddValue ("maliRatio", "percentage of malicious nodes", maliRatio);
   cmd.AddValue ("messageCount", "total number of message the source node sends", messageCount);
   cmd.AddValue ("threshold", "threshold for every node to broadcast", threshold_global);
@@ -665,12 +650,9 @@ int main (int argc, char *argv[])
 
   //arguments for packets
   std::string phyMode ("DsssRate1Mbps");
-  //double rss = -80;  // -dBm
-  //uint32_t packetSize = 1000; // bytes
   uint32_t numPackets = 10;
-  double interval = 1.0; // seconds
   bool verbose = false;
- 
+  
   //initialize maliciousVector
   int maliNumber = maliRatio * nodesize_global;
   int maliCount = 0;
@@ -681,22 +663,9 @@ int main (int argc, char *argv[])
       maliCount++;
     }
   }
-/*
-  //uint32_t users = 250;
 
-  CommandLine cmd;
-
-  cmd.AddValue ("phyMode", "Wifi Phy mode", phyMode);
-  cmd.AddValue ("rss", "received signal strength", rss);
-  cmd.AddValue ("packetSize", "size of application packet sent", packetSize);
-  cmd.AddValue ("numPackets", "number of packets generated", numPackets);
-  cmd.AddValue ("interval", "interval (seconds) between packets", interval);
-  cmd.AddValue ("verbose", "turn on all WifiNetDevice log components", verbose);
-
-  cmd.Parse (argc, argv);
-*/ 
- // Convert to time object
-  Time interPacketInterval = Seconds (interval);
+  // Convert to time object
+  Time interPacketInterval = Seconds (movingDelay);
 
   // disable fragmentation for frames below 2200 bytes
   Config::SetDefault ("ns3::WifiRemoteStationManager::FragmentationThreshold", StringValue ("2200"));
@@ -729,7 +698,7 @@ int main (int argc, char *argv[])
   wifiChannel.SetPropagationDelay ("ns3::ConstantSpeedPropagationDelayModel");
   // The below FixedRssLossModel will cause the rss to be fixed regardless
   // of the distance between the two stations, and the transmit power
-   wifiChannel.AddPropagationLoss ("ns3::RangePropagationLossModel","MaxRange",DoubleValue (5.0));
+   wifiChannel.AddPropagationLoss ("ns3::RangePropagationLossModel","MaxRange",DoubleValue (10.0));
   wifiPhy.SetChannel (wifiChannel.Create ());
 
   // Add a non-QoS upper mac, and disable rate control
@@ -781,17 +750,20 @@ Simulator::Schedule (Seconds (0.1), &MyReceiver::SayHello, receiver, numPackets,
   }
 
 MyReceiver* source = myReceiverSink.at(9);
-Simulator::Schedule (Seconds (0.5), &MyReceiver::SayMessage, source, numPackets, Seconds (2.0), (uint16_t) 999);
-Simulator::Schedule (Seconds (1.5), &MyReceiver::SayKey, source, numPackets, Seconds (2.0), (uint16_t) 999);
+Simulator::Schedule (Seconds (0.5), &MyReceiver::SayMessage, source, numPackets, Seconds (5.0), (uint16_t) 999);
+Simulator::Schedule (Seconds (5.5), &MyReceiver::SayKey, source, numPackets, Seconds (5.0), (uint16_t) 999);
 // Simulator::ScheduleWithContext (source->GetNode ()->GetId (),
  //                                 Seconds (1.0), &MyReceiver::SayMessage, 
    //                               source, numPackets, Seconds (2.0));
 
   Simulator::Stop (Seconds (15.0));
   AnimationInterface anim ("simple-adhoc.xml");
+ /* for (int j = 0; j < messageCount; j++) {
+        NS_LOG_UNCOND("message decode q: "<<g_decodeq.at(j));
+}*/
+  
   Simulator::Run ();
   Simulator::Destroy ();
- 
 
   return 0;
 }
