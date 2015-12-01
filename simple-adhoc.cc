@@ -117,7 +117,7 @@ public:
   void InsertItem(EncounterListItem *current);
   void DeleteItem(Time end);
   void Next();
-  std::vector<uint32_t> calculateMaxScore(int nodeSize, Time curr_time, double threshold);
+  std::vector<uint32_t> calculateMaxScore(int nodeSize, Time curr_time, double threshold, uint16_t& neighborNum);
   int nodeSize;
   double factor;
   double lambda;
@@ -204,9 +204,9 @@ EncounterList::DeleteItem(Time end)
 }
 
 std::vector<uint32_t> 
-EncounterList::calculateMaxScore(int nodeSize, Time curr_time, double threshold) 
+EncounterList::calculateMaxScore(int nodeSize, Time curr_time, double threshold, uint16_t& neighborNum) 
 {
-  std::vector<double> trustScore(nodeSize);
+  std::vector<double> trustScore(nodeSize, 0.0);
   EncounterListItem *p = this -> head;
   while (p != NULL)
   {
@@ -218,9 +218,13 @@ EncounterList::calculateMaxScore(int nodeSize, Time curr_time, double threshold)
   }
 
   std::vector<uint32_t> bunch_of_nodeID;
+  neighborNum = 0;
   for (int i = 0 ; i < nodeSize ; i++) {
-    if (trustScore[i] > threshold) {
-      bunch_of_nodeID.push_back((uint32_t) i);
+    if (trustScore[i] > 0) {
+      neighborNum++;
+      if (trustScore[i] > threshold) {
+        bunch_of_nodeID.push_back((uint32_t) i);
+      }
     }
   }
   return bunch_of_nodeID;
@@ -338,6 +342,9 @@ public:
   uint16_t GetCurrKeyNum();
   void SetMalicious (uint16_t id);
   bool GetMalicious ();
+  void SetNeighborNum (uint16_t num);
+  uint16_t GetNeighborNum();
+  uint32_t NodeAnonymity();
 private:
   std::vector<uint64_t> messageQ; //integer holds time stamp
   std::vector<uint64_t> keyQ;
@@ -352,6 +359,7 @@ private:
   uint16_t currentKeyNum;
   EncounterList *myList;
   bool isMalicious;
+  uint16_t neighborNum;
 };
 
 MyReceiver::MyReceiver (Ptr<Node> node, TypeId tid)
@@ -420,6 +428,18 @@ bool
 MyReceiver::GetMalicious ()
 {
   return this -> isMalicious;
+}
+
+void 
+MyReceiver::SetNeighborNum (uint16_t num) 
+{
+  this -> neighborNum = num;
+}
+
+uint16_t 
+MyReceiver::GetNeighborNum ()
+{
+  return this -> neighborNum;
 }
 
 Ptr<Node>
@@ -567,7 +587,10 @@ MyReceiver::ReceivePacket (Ptr<Socket> socket)
           if (!matchFound && !decodeQ.at(keyNum.GetData())) {
             ////NS_LOG_UNCOND ("want to calculate the score"); 
             Time time = Now();
-            std::vector<uint32_t> bunch_of_recvID = myList -> calculateMaxScore(nodesize_global, time, threshold_global);
+            //when we calculate max score, we also update numbers of our neighbors;
+            uint16_t currNeighborNum;
+            std::vector<uint32_t> bunch_of_recvID = myList -> calculateMaxScore(nodesize_global, time, threshold_global, currNeighborNum);
+            this -> SetNeighborNum(currNeighborNum);
             for (int i = 0; i < (int) bunch_of_recvID.size(); i++) {
               this -> Forward (bunch_of_recvID[(uint32_t)i], packetType.GetData(), keyNum.GetData());
             }
@@ -657,6 +680,11 @@ void MyReceiver::Forward (uint16_t recvID, uint16_t pktT, uint16_t key)
   msg -> AddHeader(pktType);
   this -> Send (msg, this -> fwdSocket);
 }
+
+uint32_t MyReceiver::NodeAnonymity () {
+    return (1 / this -> GetNeighborNum());
+}
+
 
 int main (int argc, char *argv[])
 {
