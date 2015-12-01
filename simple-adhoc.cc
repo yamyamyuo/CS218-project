@@ -86,6 +86,7 @@ std::vector<int> m_decodeQ; //malicious decode q
 std::vector<int> g_decodeQ; //good decode q
 std::vector<uint64_t> messageSendTime(messageCount, Seconds(0.0).GetMilliSeconds());
 std::vector<uint64_t> messageReceivedTime(messageCount, 0);
+NodeContainer c;
 
 //
 struct ListNode {
@@ -784,8 +785,6 @@ int main (int argc, char *argv[])
   // Fix non-unicast data rate to be the same as that of unicast
   Config::SetDefault ("ns3::WifiRemoteStationManager::NonUnicastMode", 
                       StringValue (phyMode));
-
-  NodeContainer c;
         
   c.Create (nodesize_global);
 
