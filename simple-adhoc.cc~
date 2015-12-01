@@ -81,7 +81,9 @@ double threshold_global = 1.0;
 double maliRatio = 0.1;
 int messageCount = 99;
 std::vector<bool> maliciousVector(nodesize_global, false);
-std::vector<int> g_decodeQ(messageCount, 0);
+int gTotalSent = 0; //global send q
+std::vector<int> m_decodeQ; //malicious decode q
+std::vector<int> g_decodeQ; //good decode q
 std::vector<uint64_t> messageSendTime(messageCount, Seconds(0.0).GetMilliSeconds());
 
 //the encounter list classes define
@@ -210,8 +212,8 @@ EncounterList::calculateMaxScore(int nodeSize, Time curr_time, double threshold)
     EncounterTuple curr_tuple = p -> curr_data; 
     trustScore[curr_tuple.GetID()] += pow (factor, lambda * (curr_time.GetSeconds() - curr_tuple.timestamp.GetSeconds()));
     p = p -> next;
-    NS_LOG_UNCOND (curr_tuple.GetID());
-    NS_LOG_UNCOND (trustScore[curr_tuple.GetID()]);
+    //NS_LOG_UNCOND (curr_tuple.GetID());
+    //NS_LOG_UNCOND (trustScore[curr_tuple.GetID()]);
   }
 
   std::vector<uint32_t> bunch_of_nodeID;
@@ -470,9 +472,9 @@ MyReceiver::ReceivePacket (Ptr<Socket> socket)
       //packet->Print(std::cout);
       MyHeader nodeID, packetType;
       packet -> RemoveHeader(packetType);
-      NS_LOG_UNCOND ("type: "<< packetType.GetData());
+      //NS_LOG_UNCOND ("type: "<< packetType.GetData());
       packet -> RemoveHeader(nodeID); //for hello message, this is sender. for key message, this is receiver
-      NS_LOG_UNCOND ("id: "<< nodeID.GetData());
+      //NS_LOG_UNCOND ("id: "<< nodeID.GetData());
       
       //when it is hellomsg Store in Encounter list for score calculation
       if (packetType.GetData() == (uint16_t) 0) 
@@ -486,6 +488,7 @@ MyReceiver::ReceivePacket (Ptr<Socket> socket)
 
       if (packetType.GetData() != (uint16_t) 0)
       {
+        NS_LOG_UNCOND (socket->GetNode() -> GetId());
         MyHeader keyNum;
         packet -> RemoveHeader(keyNum);
 
@@ -501,17 +504,27 @@ MyReceiver::ReceivePacket (Ptr<Socket> socket)
               matchFound = true;
               decodeQ.at(keyNum.GetData()) = true;
               if (this -> isMalicious) {
-                g_decodeQ.at(keyNum.GetData()) = 1;
+                if (std::find(m_decodeQ.begin(), m_decodeQ.end(), keyNum.GetData()) == m_decodeQ.end()) {
+                  // someName not in name, add it
+                  m_decodeQ.push_back(keyNum.GetData());
+                }
+//                m_decodeQ.at(keyNum.GetData()) = 1;
+                NS_LOG_UNCOND ("Matched by Mal");
               }
               else {
-                g_decodeQ.at(keyNum.GetData()) = 2;
+                if (std::find(g_decodeQ.begin(), g_decodeQ.end(), keyNum.GetData()) == g_decodeQ.end()) {
+                  // someName not in name, add it
+                  g_decodeQ.push_back(keyNum.GetData());
+                }
+                //g_decodeQ.at(keyNum.GetData()) = 2;
               }
               NS_LOG_UNCOND ("Match Found by: " << this -> mySocket ->GetNode() -> GetId());
+              NS_LOG_UNCOND ("Match Key Num: " <<keyNum.GetData());
             }
           }
           else {
             messageQ.at(keyNum.GetData()) = t.GetMilliSeconds();
-            NS_LOG_UNCOND ("messageQ: "<<messageQ.at(keyNum.GetData()));
+            //NS_LOG_UNCOND ("messageQ: "<<messageQ.at(keyNum.GetData()));
           }
         }
         if (packetType.GetData() == (uint16_t) 2) {
@@ -521,24 +534,34 @@ MyReceiver::ReceivePacket (Ptr<Socket> socket)
               matchFound = true;
               decodeQ.at(keyNum.GetData()) = true;
               if (this -> isMalicious) {
-                g_decodeQ.at(keyNum.GetData()) = 1;
+                if (std::find(m_decodeQ.begin(), m_decodeQ.end(), keyNum.GetData()) == m_decodeQ.end()) {
+                  // someName not in name, add it
+                  m_decodeQ.push_back(keyNum.GetData());
+                }
+//                m_decodeQ.at(keyNum.GetData()) = 1;
+                NS_LOG_UNCOND ("Matched by Mal");
               }
               else {
-                g_decodeQ.at(keyNum.GetData()) = 2;
+                if (std::find(g_decodeQ.begin(), g_decodeQ.end(), keyNum.GetData()) == g_decodeQ.end()) {
+                  // someName not in name, add it
+                  g_decodeQ.push_back(keyNum.GetData());
+                }
+                //g_decodeQ.at(keyNum.GetData()) = 2;
               }
               NS_LOG_UNCOND ("Match Found by: " << this -> mySocket ->GetNode() -> GetId());
+              NS_LOG_UNCOND ("Match Key Num: " <<keyNum.GetData());
             }
           }
           else {
             keyQ.at(keyNum.GetData()) = t.GetMilliSeconds();
-            NS_LOG_UNCOND ("keyQ: "<<keyQ.at(keyNum.GetData()));
+            //NS_LOG_UNCOND ("keyQ: "<<keyQ.at(keyNum.GetData()));
           }
         }
         if (nodeID.GetData() == (uint16_t) 999 || 
             nodeID.GetData() == this -> mySocket ->GetNode () -> GetId ())
         {    
           if (!matchFound && !decodeQ.at(keyNum.GetData())) {
-            //NS_LOG_UNCOND ("want to calculate the score"); 
+            ////NS_LOG_UNCOND ("want to calculate the score"); 
             Time time = Now();
             std::vector<uint32_t> bunch_of_recvID = myList -> calculateMaxScore(nodesize_global, time, threshold_global);
             for (int i = 0; i < (int) bunch_of_recvID.size(); i++) {
@@ -570,7 +593,7 @@ void MyReceiver::SayHello (uint32_t pktCount, Time interval)
   this -> Send (helloMsg, this -> helloSocket);
   EventId sendEvent;
   sendEvent = Simulator::Schedule (interval, &MyReceiver::SayHello, this, pktCount-1, interval);
-  //NS_LOG_UNCOND (sendEvent.GetTs());
+  ////NS_LOG_UNCOND (sendEvent.GetTs());
 }
 
 void MyReceiver::SayMessage (uint32_t pktCount, Time interval, uint16_t recvID)
@@ -593,7 +616,7 @@ void MyReceiver::SayMessage (uint32_t pktCount, Time interval, uint16_t recvID)
   EventId sendEvent;
   sendEvent = Simulator::Schedule (interval, &MyReceiver::SayMessage, this, pktCount-1, interval, recvID);
   //sendEvent = Simulator::Schedule (pktInterval, &MyReceiver::SayHello, this, pktCount-1, pktInterval);
-  NS_LOG_UNCOND (sendEvent.GetTs());
+  //NS_LOG_UNCOND (sendEvent.GetTs());
 }
 
 void MyReceiver::SayKey(uint32_t pktCount, Time interval, uint16_t recvID)
@@ -609,16 +632,17 @@ void MyReceiver::SayKey(uint32_t pktCount, Time interval, uint16_t recvID)
   keyMsg -> AddHeader(idHeader);
   keyMsg -> AddHeader(packetType);
   this -> Send (keyMsg, this -> keyMsgSocket);
+  gTotalSent=currentKeyNum;
   this -> currentKeyNum++;
 
   EventId sendEvent;
   sendEvent = Simulator::Schedule (interval, &MyReceiver::SayKey, this, pktCount-1, interval, recvID);
-  //NS_LOG_UNCOND (sendEvent.GetTs());
+  ////NS_LOG_UNCOND (sendEvent.GetTs());
 }
 
 void MyReceiver::Forward (uint16_t recvID, uint16_t pktT, uint16_t key) 
 {
-  NS_LOG_UNCOND ("forward to" << recvID);
+  //NS_LOG_UNCOND ("forward to" << recvID);
   MyHeader rcv, pktType, keyNum;
   rcv.SetData(recvID);
   pktType.SetData(pktT);
@@ -750,20 +774,20 @@ Simulator::Schedule (Seconds (0.1), &MyReceiver::SayHello, receiver, numPackets,
   }
 
 MyReceiver* source = myReceiverSink.at(9);
-Simulator::Schedule (Seconds (0.5), &MyReceiver::SayMessage, source, numPackets, Seconds (5.0), (uint16_t) 999);
-Simulator::Schedule (Seconds (5.5), &MyReceiver::SayKey, source, numPackets, Seconds (5.0), (uint16_t) 999);
+Simulator::Schedule (Seconds (0.5), &MyReceiver::SayMessage, source, numPackets, Seconds (2.0), (uint16_t) 999);
+Simulator::Schedule (Seconds (5.5), &MyReceiver::SayKey, source, numPackets, Seconds (2.0), (uint16_t) 999);
 // Simulator::ScheduleWithContext (source->GetNode ()->GetId (),
  //                                 Seconds (1.0), &MyReceiver::SayMessage, 
    //                               source, numPackets, Seconds (2.0));
 
-  Simulator::Stop (Seconds (15.0));
+  Simulator::Stop (Seconds (35.0));
   AnimationInterface anim ("simple-adhoc.xml");
  /* for (int j = 0; j < messageCount; j++) {
-        NS_LOG_UNCOND("message decode q: "<<g_decodeq.at(j));
+        //NS_LOG_UNCOND("message decode q: "<<g_decodeq.at(j));
 }*/
   
   Simulator::Run ();
   Simulator::Destroy ();
-
+  NS_LOG_UNCOND (gTotalSent);
   return 0;
 }

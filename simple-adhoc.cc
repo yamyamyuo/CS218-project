@@ -660,7 +660,6 @@ int main (int argc, char *argv[])
   int nodeDensity = 5;
   int nodeSpeed = 5;
   int movingDelay = 10;
-  double maliRatio = 0.0;
   CommandLine cmd;
   cmd.AddValue ("nodesize", "number of nodes", nodesize_global);
   cmd.AddValue ("nodeDensity", "density of the network", nodeDensity);
