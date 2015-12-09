@@ -362,8 +362,8 @@ public:
   void ReceivePacket (Ptr<Socket> socket);
   void Send (Ptr<Packet> msg, Ptr<Socket> socket);
   void SayHello (uint32_t pktCount, Time pktInterval);
-  void SayMessage (uint32_t pktCount, Time interval, uint16_t recvID);
-  void SayKey (uint32_t pktCount, Time interval, uint16_t recvID);
+  void SayMessage (uint32_t pktCount, Time interval, uint16_t recvID, std::vector<MyReceiver* > myReceiverSink);
+  void SayKey (uint32_t pktCount, Time interval, uint16_t recvID, std::vector<MyReceiver* > myReceiverSink);
   void Forward (uint16_t recvID, uint16_t pktT, uint16_t key);
   Ptr<Node> GetNode ();
   uint16_t GetCurrKeyNum();
@@ -393,7 +393,6 @@ private:
   ListNode *neighbors;
 };
 
-std::vector<MyReceiver* > myReceiverSink (nodesize_global);
 MyReceiver::MyReceiver (Ptr<Node> node, TypeId tid)
 {
   this -> currentKeyNum = 1;
@@ -592,7 +591,9 @@ MyReceiver::ReceivePacket (Ptr<Socket> socket)
             //NS_LOG_UNCOND ("messageQ: "<<messageQ.at(keyNum.GetData()));
           }
         }
+        //if received key
         if (packetType.GetData() == (uint16_t) 2) {
+          //if there's a matching message
           if (messageQ.at(keyNum.GetData()) > 0 && decodeQ.at(keyNum.GetData()) == false) {
             uint64_t currTime = t.GetMilliSeconds();
             if (currTime - messageQ.at(keyNum.GetData()) <= 1500) {
@@ -621,6 +622,7 @@ MyReceiver::ReceivePacket (Ptr<Socket> socket)
               NS_LOG_UNCOND ("Match Key Num: " <<keyNum.GetData());
             }
           }
+          //if no matching key
           else {
             keyQ.at(keyNum.GetData()) = t.GetMilliSeconds();
             //NS_LOG_UNCOND ("keyQ: "<<keyQ.at(keyNum.GetData()));
@@ -671,7 +673,7 @@ void MyReceiver::SayHello (uint32_t pktCount, Time interval)
   ////NS_LOG_UNCOND (sendEvent.GetTs());
 }
 
-void MyReceiver::SayMessage (uint32_t pktCount, Time interval, uint16_t recvID)
+void MyReceiver::SayMessage (uint32_t pktCount, Time interval, uint16_t recvID, std::vector<MyReceiver* > myReceiverSink)
 {
   MyHeader idHeader;
   idHeader.SetData(recvID);
@@ -691,12 +693,12 @@ void MyReceiver::SayMessage (uint32_t pktCount, Time interval, uint16_t recvID)
     messageSendTime[currentKeyNum] = Simulator::Now().GetMilliSeconds();
   
   EventId sendEvent;
-  sendEvent = Simulator::Schedule (interval, &MyReceiver::SayMessage, this, pktCount-1, interval, recvID);
+  sendEvent = Simulator::Schedule (interval, &MyReceiver::SayMessage, this, pktCount-1, interval, recvID, myReceiverSink);
   //sendEvent = Simulator::Schedule (pktInterval, &MyReceiver::SayHello, this, pktCount-1, pktInterval);
   //NS_LOG_UNCOND (sendEvent.GetTs());
 }
 
-void MyReceiver::SayKey(uint32_t pktCount, Time interval, uint16_t recvID)
+void MyReceiver::SayKey(uint32_t pktCount, Time interval, uint16_t recvID, std::vector<MyReceiver* > myReceiverSink)
 {
   MyHeader idHeader;
   idHeader.SetData(recvID);
@@ -711,12 +713,11 @@ void MyReceiver::SayKey(uint32_t pktCount, Time interval, uint16_t recvID)
   this -> Send (keyMsg, this -> keyMsgSocket);
   gTotalSent=currentKeyNum;
   rawTotalSent++;
-
   anonymityTotal += this->NodeAnonymity(myReceiverSink);
   this -> currentKeyNum++;
 
   EventId sendEvent;
-  sendEvent = Simulator::Schedule (interval, &MyReceiver::SayKey, this, pktCount-1, interval, recvID);
+  sendEvent = Simulator::Schedule (interval, &MyReceiver::SayKey, this, pktCount-1, interval, recvID, myReceiverSink);
   ////NS_LOG_UNCOND (sendEvent.GetTs());
 }
 
@@ -736,15 +737,13 @@ void MyReceiver::Forward (uint16_t recvID, uint16_t pktT, uint16_t key)
 
 double MyReceiver::NodeAnonymity (std::vector<MyReceiver* > myReceiverSink) {
     ListNode *node = GetNeighbors();
-    double result = 1;
+    double result = 1.0;
     while (node != NULL) 
     {
-      MyReceiver *currReceiver = myReceiverSink.at(node -> val);
+      MyReceiver *currReceiver = myReceiverSink.at(node -> val); 
       double neverGuess = 1.0;
       if (currReceiver -> GetNeighborNum() > 0) {
-        for (int i = 0; i < currReceiver -> GetNeighborNum() - 1; i++) {
-          neverGuess = 1/(currReceiver -> GetNeighborNum()); //probability of never guessing the source by a source's neighbor
-        }
+        neverGuess = ((double)currReceiver -> GetNeighborNum() - 1)/currReceiver -> GetNeighborNum();
       }
       result *= neverGuess; //probability that all the neighbors never guess the source
       node = node -> next;
@@ -760,17 +759,17 @@ int main (int argc, char *argv[])
   int nodeSparseness = 30;
   int nodeTravel = 300;
   int nodeSpeed = 100.0;
-  int movingDelay = 5;
+  int movingDelay = 3;
   int sourceNode = 2;
   CommandLine cmd;
-  cmd.AddValue ("nodesize", "number of nodes (default 50)", nodesize_global);
-  cmd.AddValue ("nodeSparseness", "density of the network (default 30)", nodeSparseness);
+  cmd.AddValue ("nodeSize", "number of nodes (default 50)", nodesize_global);
+  cmd.AddValue ("nodeSparseness", "density of the network (default 10)", nodeSparseness);
   cmd.AddValue ("nodeTravel", "how far a node will travel (default 300)", nodeTravel);
   cmd.AddValue ("nodeSpeed", "speed of each node (default 100.0)", nodeSpeed);
   cmd.AddValue ("maliRatio", "percentage of malicious nodes (default 0.5)", maliRatio);
 //  cmd.AddValue ("messageCount", "total number of message the source node sends", messageCount);
   cmd.AddValue ("threshold", "threshold for every node to broadcast (default 1.0)", threshold_global);
-  cmd.AddValue ("delay", "the time period between sending message and key (default 5)", movingDelay);
+  cmd.AddValue ("delay", "the time period between sending message and key (default 3)", movingDelay);
   cmd.AddValue ("sourceNode", "the node chosen to be the source (default 2)", sourceNode);
   cmd.Parse (argc, argv);
 
@@ -868,23 +867,24 @@ int main (int argc, char *argv[])
   TypeId tid = TypeId::LookupByName ("ns3::UdpSocketFactory");
 
   //routing 
+  std::vector<MyReceiver* > myReceiverSink (nodesize_global);
   for (uint32_t n = 0; n < (uint32_t) nodesize_global; n++) {
       MyReceiver *receiver = new MyReceiver (c.Get(n), tid);
       receiver -> Receive (MakeCallback (&MyReceiver::ReceivePacket, receiver));
-      Simulator::Schedule (Seconds (0.1), &MyReceiver::SayHello, receiver, numPackets, Seconds (2.0));
+      Simulator::Schedule (Seconds (0.1), &MyReceiver::SayHello, receiver, numPackets, Seconds (1.0));
 //      receiver -> SayHello(numPackets, interPacketInterval);
       myReceiverSink.at(n) = receiver;
   }
 
 MyReceiver* source = myReceiverSink.at(sourceNode);
-Simulator::Schedule (Seconds (0.321), &MyReceiver::SayMessage, source, numPackets, Seconds (2.0), (uint16_t) 999);
-Simulator::Schedule (Seconds (movingDelay), &MyReceiver::SayKey, source, numPackets, Seconds (2.0), (uint16_t) 999);
+Simulator::Schedule (Seconds (0.321), &MyReceiver::SayMessage, source, numPackets, Seconds (0.321), (uint16_t) 999, myReceiverSink);
+Simulator::Schedule (Seconds (movingDelay), &MyReceiver::SayKey, source, numPackets, Seconds (movingDelay), (uint16_t) 999, myReceiverSink);
 
 // Simulator::ScheduleWithContext (source->GetNode ()->GetId (),
  //                                 Seconds (1.0), &MyReceiver::SayMessage, 
    //                               source, numPackets, Seconds (2.0));
 
-  Simulator::Stop (Seconds (35.0));
+  Simulator::Stop (Seconds (55.0));
   AnimationInterface anim ("simple-adhoc.xml");
  /* for (int j = 0; j < messageCount; j++) {
         //NS_LOG_UNCOND("message decode q: "<<g_decodeq.at(j));
@@ -911,7 +911,7 @@ Simulator::Schedule (Seconds (movingDelay), &MyReceiver::SayKey, source, numPack
       totalDiff += messageReceivedTime.at(i) - messageSendTime.at(i);
     }
   }
-  double avgDelayTime = totalDiff/(double)messageReceivedTime.size();
+  double avgDelayTime = totalDiff/(double)totalDecoded;
   NS_LOG_UNCOND ("Average Message Delay in milliseconds: "<<avgDelayTime);
 
 //calculate anonymity total
