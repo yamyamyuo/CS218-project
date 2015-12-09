@@ -239,7 +239,7 @@ EncounterList::calculateMaxScore(int nodeSize, Time curr_time, double threshold,
     //NS_LOG_UNCOND (trustScore[curr_tuple.GetID()]);
   }
 
-  std::vector<uint32_t> bunch_of_nodeID(nodesize_global);
+  std::vector<uint32_t> bunch_of_nodeID;
   neighborNum = 0;
   ListNode *node = neighbors;
   for (int i = 0 ; i < nodeSize ; i++) {
@@ -248,7 +248,7 @@ EncounterList::calculateMaxScore(int nodeSize, Time curr_time, double threshold,
       neighborNum++;
       node -> next = new ListNode(i);
       node = node -> next;
-      if (trustScore[i] > 100000000000) {
+      if (trustScore[i] > threshold) {
         bunch_of_nodeID.push_back((uint32_t) i);
       }
     }
@@ -591,7 +591,9 @@ MyReceiver::ReceivePacket (Ptr<Socket> socket)
             //NS_LOG_UNCOND ("messageQ: "<<messageQ.at(keyNum.GetData()));
           }
         }
+        //if received key
         if (packetType.GetData() == (uint16_t) 2) {
+          //if there's a matching message
           if (messageQ.at(keyNum.GetData()) > 0 && decodeQ.at(keyNum.GetData()) == false) {
             uint64_t currTime = t.GetMilliSeconds();
             if (currTime - messageQ.at(keyNum.GetData()) <= 1500) {
@@ -620,6 +622,7 @@ MyReceiver::ReceivePacket (Ptr<Socket> socket)
               NS_LOG_UNCOND ("Match Key Num: " <<keyNum.GetData());
             }
           }
+          //if no matching key
           else {
             keyQ.at(keyNum.GetData()) = t.GetMilliSeconds();
             //NS_LOG_UNCOND ("keyQ: "<<keyQ.at(keyNum.GetData()));
@@ -738,7 +741,7 @@ double MyReceiver::NodeAnonymity (std::vector<MyReceiver* > myReceiverSink) {
     while (node != NULL) 
     {
       MyReceiver *currReceiver = myReceiverSink.at(node -> val); 
-      double neverGuess = 0.0;
+      double neverGuess = 1.0;
       if (currReceiver -> GetNeighborNum() > 0) {
         neverGuess = ((double)currReceiver -> GetNeighborNum() - 1)/currReceiver -> GetNeighborNum();
       }
