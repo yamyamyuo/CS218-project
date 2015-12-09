@@ -84,6 +84,7 @@ int messageCount = 99;
 std::vector<bool> maliciousVector(nodesize_global, false);
 int rawTotalSent = 0;
 int gTotalSent = 0; //global send q
+std::vector<int> gTotalDecode; //unique messages decoded
 std::vector<int> m_decodeQ; //malicious decode q
 std::vector<int> g_decodeQ; //good decode q
 std::vector<uint64_t> messageSendTime(messageCount, Seconds(0.0).GetMilliSeconds());
@@ -569,6 +570,7 @@ MyReceiver::ReceivePacket (Ptr<Socket> socket)
               decodeQ.at(keyNum.GetData()) = true;
               if (messageReceivedTime.at(keyNum.GetData()) == (uint64_t) 0) {
                 messageReceivedTime.at(keyNum.GetData()) = currTime;
+                NS_LOG_UNCOND ("Message Sent time "<<messageSendTime.at(keyNum.GetData()));
                 NS_LOG_UNCOND ("Message Received Time"<<messageReceivedTime.at(keyNum.GetData()));
               }
               if (this -> isMalicious) {
@@ -581,6 +583,9 @@ MyReceiver::ReceivePacket (Ptr<Socket> socket)
                 if (std::find(g_decodeQ.begin(), g_decodeQ.end(), keyNum.GetData()) == g_decodeQ.end()) {
                   g_decodeQ.push_back(keyNum.GetData());
                 }
+              }
+              if (std::find(gTotalDecode.begin(), gTotalDecode.end(), keyNum.GetData()) == gTotalDecode.end()) {
+                  gTotalDecode.push_back(keyNum.GetData());
               }
               NS_LOG_UNCOND ("Match Found by: " << this -> mySocket ->GetNode() -> GetId());
               NS_LOG_UNCOND ("Match Key Num: " <<keyNum.GetData());
@@ -601,24 +606,24 @@ MyReceiver::ReceivePacket (Ptr<Socket> socket)
               decodeQ.at(keyNum.GetData()) = true;
               if (messageReceivedTime.at(keyNum.GetData()) == (uint64_t) 0) {
                 messageReceivedTime.at(keyNum.GetData()) = currTime;
-                NS_LOG_UNCOND ("Message Received Time "<<messageReceivedTime.at(keyNum.GetData()));
+                NS_LOG_UNCOND ("Message Sent time "<<messageSendTime.at(keyNum.GetData()));
+                NS_LOG_UNCOND ("Message Received Time"<<messageReceivedTime.at(keyNum.GetData()));
               }
               if (this -> isMalicious) {
                 if (std::find(m_decodeQ.begin(), m_decodeQ.end(), keyNum.GetData()) == m_decodeQ.end()) {
-                  // someName not in name, add it
                   m_decodeQ.push_back(keyNum.GetData());
                 }
-//                m_decodeQ.at(keyNum.GetData()) = 1;
                 NS_LOG_UNCOND ("Matched by Mal");
               }
               else {
                 if (std::find(g_decodeQ.begin(), g_decodeQ.end(), keyNum.GetData()) == g_decodeQ.end()) {
-                  // someName not in name, add it
                   g_decodeQ.push_back(keyNum.GetData());
                 }
-                //g_decodeQ.at(keyNum.GetData()) = 2;
               }
-              //NS_LOG_UNCOND ("Match Found by: " << this -> mySocket ->GetNode() -> GetId());
+              if (std::find(gTotalDecode.begin(), gTotalDecode.end(), keyNum.GetData()) == gTotalDecode.end()) {
+                  gTotalDecode.push_back(keyNum.GetData());
+              }
+              NS_LOG_UNCOND ("Match Found by: " << this -> mySocket ->GetNode() -> GetId());
               NS_LOG_UNCOND ("Match Key Num: " <<keyNum.GetData());
             }
           }
@@ -689,8 +694,8 @@ void MyReceiver::SayMessage (uint32_t pktCount, Time interval, uint16_t recvID, 
   rawTotalSent++;
   anonymityTotal += this->NodeAnonymity(myReceiverSink);
   //record the message sending time
-  if (messageSendTime[currentKeyNum] == 0.0)
-    messageSendTime[currentKeyNum] = Simulator::Now().GetMilliSeconds();
+  if (messageSendTime.at(currentKeyNum) == 0.0)
+    messageSendTime.at(currentKeyNum) = Simulator::Now().GetMilliSeconds();
   
   EventId sendEvent;
   sendEvent = Simulator::Schedule (interval, &MyReceiver::SayMessage, this, pktCount-1, interval, recvID, myReceiverSink);
@@ -878,7 +883,7 @@ int main (int argc, char *argv[])
 
 MyReceiver* source = myReceiverSink.at(sourceNode);
 Simulator::Schedule (Seconds (0.321), &MyReceiver::SayMessage, source, numPackets, Seconds (0.321), (uint16_t) 999, myReceiverSink);
-Simulator::Schedule (Seconds (movingDelay), &MyReceiver::SayKey, source, numPackets, Seconds (movingDelay), (uint16_t) 999, myReceiverSink);
+Simulator::Schedule (Seconds (0.321+movingDelay), &MyReceiver::SayKey, source, numPackets, Seconds (0.321+movingDelay), (uint16_t) 999, myReceiverSink);
 
 // Simulator::ScheduleWithContext (source->GetNode ()->GetId (),
  //                                 Seconds (1.0), &MyReceiver::SayMessage, 
@@ -911,7 +916,7 @@ Simulator::Schedule (Seconds (movingDelay), &MyReceiver::SayKey, source, numPack
       totalDiff += messageReceivedTime.at(i) - messageSendTime.at(i);
     }
   }
-  double avgDelayTime = totalDiff/(double)totalDecoded;
+  double avgDelayTime = totalDiff/(double)gTotalDecode.size();
   NS_LOG_UNCOND ("Average Message Delay in milliseconds: "<<avgDelayTime);
 
 //calculate anonymity total
